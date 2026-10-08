@@ -44,7 +44,14 @@ jobs:
         run: |
           DMG=$(ls dist/*-universal.dmg | head -n1)
           echo "DMG: $DMG"
-          MNT=$(hdiutil attach "$DMG" -nobrowse -quiet | awk '/Volumes/{print $3}')
+          # hdiutil attach output is tab-separated; mount path may contain spaces,
+          # so take the last field ($NF), not $3.
+          MNT=$(hdiutil attach "$DMG" -nobrowse | awk -F'\t' '/Volumes/{print $NF}' | tr -d '[:space:]' | head -n1)
+          # Fallback: find the most recently mounted volume matching the app name.
+          if [ -z "$MNT" ] || [ ! -d "$MNT" ]; then
+            MNT=$(ls -td /Volumes/Compositor* 2>/dev/null | head -n1)
+          fi
+          echo "MNT: $MNT"
           BIN="$MNT/Compositor.app/Contents/MacOS/Compositor"
           lipo -info "$BIN"
           hdiutil detach "$MNT" -quiet
