@@ -17,6 +17,14 @@ Get Compositor from [robbietilton.com/compositor](https://robbietilton.com/compo
 brew install --cask robbietilton-compositor
 ```
 
+## What's new in v1.5.0
+
+- **macOS 14+ support**: deployment target lowered from macOS 26 to **macOS 14.0**, covering far more Macs still in service.
+- **Universal binary**: a single DMG ships native code for both **Apple Silicon and Intel** (`arm64 + x86_64`), verified in CI with `lipo`.
+- **Simplified Chinese (简体中文) UI**: a full `zh-Hans` translation of 418 user-visible strings lives alongside the English base — the app follows the system language automatically.
+
+The compatibility work touched 14 macOS 15/26-only APIs across the editor canvas, transform overlay, JPEG export sheet, toolbar, blend-mode picker, type controls and window placement — every one is now gated behind `#available` with a macOS 14-safe fallback (e.g. `ScrollViewReader` for `ScrollPosition`, `NSCursor.resizeLeftRight` for `NSCursor.columnResize`). See [docs/release-notes/v1.5.0.md](docs/release-notes/v1.5.0.md) for the full table.
+
 ## Features
 
 ### Layers
@@ -90,9 +98,22 @@ Open `Compositor.xcodeproj` and run the **Compositor** scheme.
 
 ## Releasing
 
-`scripts/release.sh` builds a Release version, signs it with Developer ID, notarizes and staples it, and packages it into `dist/Compositor-<version>.dmg`.
+### Automated (CI)
 
-It needs, all kept outside this repository:
+Push a version tag — `.github/workflows/build-release.yml` builds a universal (arm64 + x86_64) DMG on `macos-15`, verifies both slices with `lipo`, uploads it as an artifact, and creates a GitHub Release with the DMG attached.
+
+```sh
+git tag -a v1.5.0 -m "v1.5.0"
+git push origin v1.5.0
+```
+
+The CI build is **unsigned** (no Developer ID in the runner); for a signed + notarized DMG, run the script locally with `SIGN=1`.
+
+### Manual
+
+`scripts/release.sh` builds a Release version and packages it into `dist/Compositor-<version>-universal.dmg`. Set `SIGN=0` (default) for an ad-hoc-signed local build, or `SIGN=1` for Developer ID signing + notarization + stapling.
+
+Signed builds need, all kept outside this repository:
 
 - a **Developer ID Application** certificate in the login keychain
 - notarization credentials saved with `xcrun notarytool store-credentials "compositor-notary" …`
