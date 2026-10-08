@@ -179,7 +179,19 @@ struct JPEGPreview: View {
                     .onTapGesture(count: 2) { self.zoom = nil }
                     .onAppear { keepCentered(from: nil, to: zoom, in: geometry.size, content: size, proxy: proxy) }
                     .onChange(of: zoom) { old, new in keepCentered(from: old, to: new, in: geometry.size, content: size, proxy: proxy) }
-                    .pointerStyle(dragStart == nil ? .grabIdle : .grabActive)
+                    .modify { view in
+                        if #available(macOS 15.0, *) {
+                            view.pointerStyle(dragStart == nil ? .grabIdle : .grabActive)
+                        } else {
+                            view.onHover { inside in
+                                if inside {
+                                    (dragStart == nil ? NSCursor.openHand : NSCursor.closedHand).set()
+                                } else {
+                                    NSCursor.arrow.set()
+                                }
+                            }
+                        }
+                    }
                 }
             } else {
                 Image(decorative: image, scale: 1).resizable().interpolation(.high).scaledToFit()
