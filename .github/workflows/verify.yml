@@ -13,11 +13,11 @@ permissions:
 
 jobs:
   unit:
-    name: unit
+    name: unit (universal arm64 + x86_64)
     # Push covers same-repo branches. pull_request runs only for forks, so a PR is not tested twice.
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: macos-26
-    timeout-minutes: 60
+    timeout-minutes: 90
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -32,18 +32,33 @@ jobs:
           -scheme Compositor
           -onlyUsePackageVersionsFromResolvedFile
 
-      - name: Build for testing
+      # Build a UNIVERSAL binary (arm64 + x86_64) so Intel (x86_64) compatibility is
+      # verified at compile/link time — not just Apple Silicon. ONLY_ACTIVE_ARCH=NO
+      # forces both slices even though the runner is arm64.
+      - name: Build for testing (universal)
         id: build
         run: >
           xcodebuild build-for-testing
           -project Compositor.xcodeproj
           -scheme Compositor
-          -destination 'platform=macOS,arch=arm64'
+          -destination 'platform=macOS'
           -configuration Debug
           -derivedDataPath DerivedData
+          ARCHS="arm64 x86_64"
+          ONLY_ACTIVE_ARCH=NO
           CODE_SIGN_IDENTITY=-
 
+      - name: Verify universal binary (arm64 + x86_64)
+        run: |
+          BIN=DerivedData/Build/Products/Debug/Compositor.app/Contents/MacOS/Compositor
+          INFO=$(lipo -info "$BIN")
+          echo "$INFO"
+          echo "$INFO" | grep -q 'x86_64' || { echo "Missing x86_64 slice"; exit 1; }
+          echo "$INFO" | grep -q 'arm64'   || { echo "Missing arm64 slice"; exit 1; }
+          echo "Universal binary verified: both arm64 and x86_64 slices present."
+
       # These two suites show real windows and time them, so they run alone after the rest.
+      # Tests execute on the native arm64 runner (the universal build already validated x86_64 at link time).
       - name: Run unit tests in parallel
         run: >
           xcodebuild test-without-building
