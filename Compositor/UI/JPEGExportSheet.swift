@@ -135,8 +135,10 @@ struct JPEGPreview: View {
     let pixelHeight: Int
     @Binding var zoom: Double?
     @Environment(\.displayScale) private var displayScale
-    @State private var position = ScrollPosition()
+    /// Tracks the scroll position in content coordinates (top-left of the visible area).
     @State private var offset = CGPoint.zero
+    /// A zero-size marker placed at the requested scroll target; scrolling to it moves the content.
+    @State private var marker = CGPoint.zero
     @State private var dragStart: CGPoint?
 
     /// The zoom at which the whole image fits `frame`.
@@ -153,26 +155,32 @@ struct JPEGPreview: View {
         GeometryReader { geometry in
             if let zoom {
                 let size = shownSize(zoom)
-                ScrollView([.horizontal, .vertical]) {
-                    // Nearest-neighbor from 100% up, so each pixel of the JPEG and its artifacts shows as it is.
-                    Image(decorative: image, scale: 1).resizable().interpolation(zoom >= 1 ? .none : .high)
-                        .frame(width: size.width, height: size.height)
-                        .frame(minWidth: geometry.size.width, minHeight: geometry.size.height)
-                }
-                .scrollIndicators(.visible)
-                .scrollPosition($position)
-                .onScrollGeometryChange(for: CGPoint.self, of: { $0.contentOffset }) { _, new in offset = new }
-                .gesture(DragGesture(minimumDistance: 1)
-                    .onChanged { drag in
-                        let start = dragStart ?? offset
-                        dragStart = start
-                        position.scrollTo(point: CGPoint(x: start.x - drag.translation.width, y: start.y - drag.translation.height))
+                ScrollViewReader { proxy in
+                    ScrollView([.horizontal, .vertical]) {
+                        Image(decorative: image, scale: 1).resizable().interpolation(zoom >= 1 ? .none : .high)
+                            .frame(width: size.width, height: size.height)
+                            .frame(minWidth: geometry.size.width, minHeight: geometry.size.height)
+                            .overlay(alignment: .topLeading) {
+                                Color.clear.frame(width: 1, height: 1)
+                                    .position(x: marker.x, y: marker.y)
+                                    .id("jpegPreviewMarker")
+                            }
                     }
-                    .onEnded { _ in dragStart = nil })
-                .onTapGesture(count: 2) { self.zoom = nil }
-                .onAppear { keepCentered(from: nil, to: zoom, in: geometry.size) }
-                .onChange(of: zoom) { old, new in keepCentered(from: old, to: new, in: geometry.size) }
-                .pointerStyle(dragStart == nil ? .grabIdle : .grabActive)
+                    .scrollIndicators(.visible)
+                    .gesture(DragGesture(minimumDistance: 1)
+                        .onChanged { drag in
+                            let start = dragStart ?? offset
+                            dragStart = start
+                            scrollTo(CGPoint(x: start.x - drag.translation.width,
+                                            y: start.y - drag.translation.height),
+                                     content: size, view: geometry.size, proxy: proxy)
+                        }
+                        .onEnded { _ in dragStart = nil })
+                    .onTapGesture(count: 2) { self.zoom = nil }
+                    .onAppear { keepCentered(from: nil, to: zoom, in: geometry.size, content: size, proxy: proxy) }
+                    .onChange(of: zoom) { old, new in keepCentered(from: old, to: new, in: geometry.size, content: size, proxy: proxy) }
+                    .pointerStyle(dragStart == nil ? .grabIdle : .grabActive)
+                }
             } else {
                 Image(decorative: image, scale: 1).resizable().interpolation(.high).scaledToFit()
                     .frame(width: geometry.size.width, height: geometry.size.height)
@@ -188,17 +196,30 @@ struct JPEGPreview: View {
     }
 
     /// Zooming keeps the middle of the view on the same part of the image; coming from Fit, it starts at the center.
-    private func keepCentered(from old: Double?, to new: Double?, in view: CGSize) {
+    private func keepCentered(from old: Double?, to new: Double?, in view: CGSize, content size: CGSize, proxy: ScrollViewProxy) {
         guard let new else { return }
-        let size = shownSize(new)
-        var middle = CGPoint(x: size.width / 2, y: size.height / 2)
+        let s = shownSize(new)
+        var middle = CGPoint(x: s.width / 2, y: s.height / 2)
         if let old {
             let before = shownSize(old)
             let fx = before.width > 0 ? (offset.x + min(view.width, before.width) / 2) / before.width : 0.5
             let fy = before.height > 0 ? (offset.y + min(view.height, before.height) / 2) / before.height : 0.5
-            middle = CGPoint(x: fx * size.width, y: fy * size.height)
+            middle = CGPoint(x: fx * s.width, y: fy * s.height)
         }
-        position.scrollTo(point: CGPoint(x: min(max(0, middle.x - view.width / 2), max(0, size.width - view.width)),
-                                         y: min(max(0, middle.y - view.height / 2), max(0, size.height - view.height))))
+        scrollTo(CGPoint(x: min(max(0, middle.x - view.width / 2), max(0, s.width - view.width)),
+                         y: min(max(0, middle.y - view.height / 2), max(0, s.height - view.height))),
+                 content: s, view: view, proxy: proxy)
+    }
+
+    /// Scrolls the content so that `target` (content coordinates, top-left) sits at the viewport's top-leading corner.
+    /// `ScrollViewReader.scrollTo` aligns a view to the viewport, so a zero-size marker is placed at `target` for that
+    /// purpose. When the content is smaller than the view, scrolling is impossible and we let ScrollView center it.
+    private func scrollTo(_ target: CGPoint, content size: CGSize, view: CGSize, proxy: ScrollViewProxy) {
+        guard size.width > view.width || size.height > view.height else { return }
+        let clamped = CGPoint(x: min(max(0, target.x), max(0, size.width - view.width)),
+                              y: min(max(0, target.y), max(0, size.height - view.height)))
+        offset = clamped
+        marker = clamped
+        withAnimation(.none) { proxy.scrollTo("jpegPreviewMarker", anchor: .topLeading) }
     }
 }
