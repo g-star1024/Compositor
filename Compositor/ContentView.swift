@@ -383,7 +383,7 @@ private struct PanelResizeEdge: View {
                         view.pointerStyle(.columnResize)
                     } else {
                         view.onHover { inside in
-                            if inside { NSCursor.columnResize.set() } else { NSCursor.arrow.set() }
+                            if inside { NSCursor.resizeLeftRight.set() } else { NSCursor.arrow.set() }
                         }
                     }
                 }
