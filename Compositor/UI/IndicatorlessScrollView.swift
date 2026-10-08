@@ -16,6 +16,11 @@ struct IndicatorlessScrollView<Content: View>: NSViewRepresentable {
         view.updateDocumentSize()
     }
 
+    // @_optimize(none): Xcode 26.6's Swift 6.3.3 compiler segfaults in
+    // EarlyPerfInliner on this class's synthesized deinit when archiving
+    // Release (-O). Debug builds are unaffected; marking the class bypasses
+    // optimization for it only, working around the compiler crash.
+    @_optimize(none)
     final class Container: NSScrollView {
         let host: NSHostingView<Content>
 
