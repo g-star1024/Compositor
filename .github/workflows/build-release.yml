@@ -22,18 +22,17 @@ concurrency:
 jobs:
   universal-pkg:
     name: Build universal DMG
-    # Xcode 16 (macos-15) is the documented minimum to build from source (README).
-    # If the project turns out to require Xcode 26-only APIs, switch the runner to
-    # `macos-26` and select `sudo xcode-select -s /Applications/Xcode_26.6.app`.
-    runs-on: macos-15
+    # Code uses Xcode 26-only APIs (borderShape, ToolbarSpacer, sharedBackgroundVisibility)
+    # and relies on Xcode 26's actor-isolation rules. Must match verify.yml's toolchain.
+    runs-on: macos-26
     timeout-minutes: 90
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         # CI auth uses the built-in GITHUB_TOKEN — no SSH key or PAT configuration needed.
 
-      - name: Select Xcode 16
-        run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+      - name: Select Xcode 26
+        run: sudo xcode-select -s /Applications/Xcode_26.6.app
 
       - name: Build universal app + DMG (unsigned, multi-arch)
         env:
