@@ -174,20 +174,31 @@ struct ContentView: View {
                     .disabled(session.isImporting || session.showsBusy || session.levels != nil)
                     .modifier(NewProjectDropTarget(workspace: applicationDelegate?.workspace))
             }
-            ToolbarSpacer(.fixed, placement: .navigation)
+            if #available(macOS 26.0, *) {
+                ToolbarSpacer(.fixed, placement: .navigation)
+            }
             if let workspace = applicationDelegate?.workspace {
-                ToolbarItem(placement: .navigation) {
-                    ProjectTabStrip(workspace: workspace)
-                        // As wide as the toolbar allows: the window less the traffic lights and New button before it
-                        // and the zoom controls after it. Bounded, so adding tabs never pushes those aside; the
-                        // strip scrolls instead.
-                        .frame(width: max(200, windowWidth - 352), height: 34, alignment: .center)
+                if #available(macOS 26.0, *) {
+                    ToolbarItem(placement: .navigation) {
+                        ProjectTabStrip(workspace: workspace)
+                            // As wide as the toolbar allows: the window less the traffic lights and New button before it
+                            // and the zoom controls after it. Bounded, so adding tabs never pushes those aside; the
+                            // strip scrolls instead.
+                            .frame(width: max(200, windowWidth - 352), height: 34, alignment: .center)
+                    }
+                    .sharedBackgroundVisibility(.hidden)
+                } else {
+                    ToolbarItem(placement: .navigation) {
+                        ProjectTabStrip(workspace: workspace)
+                            .frame(width: max(200, windowWidth - 352), height: 34, alignment: .center)
+                    }
                 }
-                .sharedBackgroundVisibility(.hidden)
             }
             // Absorb all remaining navigation-toolbar width before the zoom controls.
             // Without this spacer, the growing tab strip pushes the primary actions left.
-            ToolbarSpacer(.flexible, placement: .navigation)
+            if #available(macOS 26.0, *) {
+                ToolbarSpacer(.flexible, placement: .navigation)
+            }
             ToolbarItem(placement: .primaryAction) {
                 Button("Fit") { session.fit() }.help("Fit canvas in window (⌘0)")
                     .accessibilityIdentifier("fitCanvas").disabled(session.document == nil)
@@ -367,7 +378,15 @@ private struct PanelResizeEdge: View {
     var body: some View {
         Divider().overlay {
             Color.clear.frame(width: 8).contentShape(Rectangle())
-                .pointerStyle(.columnResize)
+                .modify { view in
+                    if #available(macOS 15.0, *) {
+                        view.pointerStyle(.columnResize)
+                    } else {
+                        view.onHover { inside in
+                            if inside { NSCursor.columnResize.set() } else { NSCursor.arrow.set() }
+                        }
+                    }
+                }
                 .gesture(DragGesture(minimumDistance: 1, coordinateSpace: .global)
                     .onChanged { value in
                         let start = startWidth ?? width
@@ -468,6 +487,10 @@ extension View {
                 active ? stepper.listen(step: step) : stepper.stopListening()
             }
             .onDisappear { stepper.stopListening() }
+    }
+    /// Apply a conditional transformation. Used to wrap macOS-version-gated modifiers.
+    func modify<T: View>(@ViewBuilder _ transform: (Self) -> T) -> T {
+        transform(self)
     }
 }
 

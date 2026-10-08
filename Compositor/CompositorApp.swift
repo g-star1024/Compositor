@@ -15,9 +15,7 @@ struct CompositorApp: App {
             .handlesExternalEvents(matching: [])
             // A first launch fills the screen (without going full screen); after that macOS reopens the window at the
             // size it was left.
-            .defaultWindowPlacement { _, context in
-                WindowPlacement(size: context.defaultDisplay.visibleRect.size)
-            }
+            .defaultWindowPlacementIfAvailable()
             // The project's name is already on its tab, so the toolbar doesn't repeat it as a window title.
             .windowToolbarStyle(.unifiedCompact(showsTitle: false))
             .commands {
@@ -353,5 +351,20 @@ struct CompositorApp: App {
                         .disabled(!session.canEditLayers || session.activeLayer == nil)
                 }
             }
+    }
+}
+
+// MARK: - macOS 15+ Scene modifiers with macOS 14 fallback
+
+extension Scene {
+    /// Fills the screen on first launch (macOS 15+). On macOS 14 the window opens at the default size and position.
+    func defaultWindowPlacementIfAvailable() -> some Scene {
+        if #available(macOS 15.0, *) {
+            return self.defaultWindowPlacement { _, context in
+                WindowPlacement(size: context.defaultDisplay.visibleRect.size)
+            }
+        } else {
+            return self
+        }
     }
 }
