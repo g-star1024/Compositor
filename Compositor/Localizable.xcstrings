@@ -4598,6 +4598,50 @@
           }
         }
       }
+    },
+    "Search Commands": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "搜索命令"
+          }
+        }
+      }
+    },
+    "Last Filter": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "上次滤镜"
+          }
+        }
+      }
+    },
+    "Toggle Fullscreen: the canvas alone on black (Esc also leaves)": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "切换全屏：黑色背景上的独立画布（Esc 也可退出）"
+          }
+        }
+      }
+    },
+    "Toggle Fullscreen": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "切换全屏"
+          }
+        }
+      }
     }
   },
   "version": "1.0"
