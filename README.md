@@ -17,6 +17,21 @@ Get Compositor from [robbietilton.com/compositor](https://robbietilton.com/compo
 brew install --cask robbietilton-compositor
 ```
 
+## What's new in v1.6.0 (unreleased)
+
+Feature parity with upstream v1.4.7 + v1.4.8, on top of v1.5.0's macOS 14 / universal / zh-Hans base:
+
+- **Export As…** (⌥⇧⌘W): PNG, JPEG or PDF, sized and previewed, with transparency shown on a checkerboard — replaces the old Export PNG / Export JPEG pair.
+- **Scanlines as a standalone filter**: Displace, Threshold, Thickness, Color Split, Black Level, Glow and Dots — no longer buried inside Dither.
+- **Navigator minimap**: a small overview in the canvas's corner from 300% zoom, with the view's box in the accent color (View › Navigator).
+- **Last Filter** (⌃⌘F): re-apply the last filter with the same settings, as in Photoshop.
+- **Search Commands** (⌘F): the command palette, moved off Last Filter's old shortcut.
+- **Toggle Fullscreen** (F / Esc): the canvas alone on black; F or Esc brings the panels back.
+- **Layers panel**: buttons dim when disabled, renaming no longer shifts the cell, no more gray flash on click/stroke, and selected layers reveal themselves in the list.
+- **Camera Raw**: Shadows and Highlights keep tones in order.
+- **Hand tool**: the cursor stays closed for the whole Space- or Hand-tool pan.
+- **zh-Hans**: 39 new strings translated (Export As, Navigator, Scanlines, Layers).
+
 ## What's new in v1.5.0
 
 - **macOS 14+ support**: deployment target lowered from macOS 26 to **macOS 14.0**, covering far more Macs still in service.
