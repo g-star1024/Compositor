@@ -49,6 +49,13 @@ actor ImageImporter {
     static let shared = ImageImporter()
     // Created only on first import, never during empty-app launch.
     private lazy var context = CIContext(options: [.cacheIntermediates: false])
+    /// For sources with more than 8 bits a channel: half-float in linear light throughout, so nothing is rounded
+    /// before the final dithered 8 bits (as `RawImporter` develops).
+    private lazy var wideContext = CIContext(options: [
+        .cacheIntermediates: false,
+        .workingFormat: CIFormat.RGBAh,
+        .workingColorSpace: CGColorSpace(name: CGColorSpace.extendedLinearSRGB)!,
+    ])
     private let sRGB = CGColorSpace(name: CGColorSpace.sRGB)!
 
     /// An SVG drawn once into pixels, by macOS's own SVG renderer: fitted to `fitting` (the canvas) when there is one,
@@ -94,7 +101,12 @@ actor ImageImporter {
             }
             let orientation = (properties[kCGImagePropertyOrientation] as? Int32) ?? 1
             let oriented = CIImage(cgImage: decoded).oriented(forExifOrientation: orientation)
-            guard let image = context.createCGImage(oriented, from: oriented.extent, format: .RGBA8, colorSpace: sRGB) else {
+            // More than 8 bits a channel (16-bit PNG and TIFF, 10-bit HEIF, float): rounded to 8 with a fine noise,
+            // as a RAW is, rather than straight down, so a smooth gradient doesn't come in, or out of later edits,
+            // in steps.
+            let wide = decoded.bitsPerComponent > 8
+            guard let image = wide ? RawImporter.dithered(oriented, context: wideContext)
+                                   : context.createCGImage(oriented, from: oriented.extent, format: .RGBA8, colorSpace: sRGB) else {
                 throw ImageImportError.unreadable
             }
             let scale = min(1, 96 / max(oriented.extent.width, oriented.extent.height))
