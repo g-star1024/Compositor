@@ -137,7 +137,7 @@ nonisolated struct LayerSides: OptionSet, Sendable {
 
 nonisolated struct FilterJob: @unchecked Sendable {
     let kind: FilterKind
-    let image: CGImage
+    var image: CGImage
     let settings: FilterSettings
     /// Pixels in `image` per original layer pixel, so a downscaled preview blurs proportionally less.
     let scale: CGFloat
@@ -171,6 +171,11 @@ nonisolated enum PixelFilter {
     /// `image` cropped to the pixels that are actually there, with the transform that keeps them in place: a blur
     /// is given generous room to spread, and whatever it leaves empty is cut away again.
     static func trimmed(_ image: CGImage, placed: LayerTransform) throws -> (image: CGImage, transform: LayerTransform) {
+        guard let crop = try trimCrop(image), let cropped = image.cropping(to: crop) else { return (image, placed) }
+        return (cropped, trimmedTransform(placed, crop: crop, width: image.width, height: image.height))
+    }
+    /// The part of `image` with anything in it, or nil when that's all of it (or nothing).
+    static func trimCrop(_ image: CGImage) throws -> CGRect? {
         let full = CGRect(x: 0, y: 0, width: image.width, height: image.height)
         let context = try BrushRaster.context(width: image.width, height: image.height, mask: false)
         BrushRaster.draw(image, in: full, mask: false, context: context)
@@ -178,16 +183,18 @@ nonisolated enum PixelFilter {
         var edges = [Int](repeating: 0, count: 4)
         brush_alpha_bounds(data.assumingMemoryBound(to: UInt8.self), image.width, image.height, context.bytesPerRow, &edges)
         let crop = CGRect(x: edges[0], y: edges[1], width: edges[2] - edges[0], height: edges[3] - edges[1])
-        guard crop.width >= 1, crop.height >= 1, crop != full, let cropped = image.cropping(to: crop) else {
-            return (image, placed)
-        }
+        return crop.width >= 1 && crop.height >= 1 && crop != full ? crop : nil
+    }
+    /// The transform placing `crop` of an image `width` × `height` that was placed by `placed`.
+    static func trimmedTransform(_ placed: LayerTransform, crop: CGRect, width: Int, height: Int) -> LayerTransform {
+        let full = CGRect(x: 0, y: 0, width: width, height: height)
         var result = placed
         result.size = CGSize(width: crop.width * placed.size.width / full.width,
                              height: crop.height * placed.size.height / full.height)
-        let toDocument = BrushRaster.pixelToDocument(placed, width: image.width, height: image.height)
+        let toDocument = BrushRaster.pixelToDocument(placed, width: width, height: height)
         let middle = CGPoint(x: crop.midX, y: crop.midY).applying(toDocument)
         result.origin = CGPoint(x: middle.x - result.size.width / 2, y: middle.y - result.size.height / 2)
-        return (cropped, result)
+        return result
     }
 
     /// `CIMotionBlur`'s radius per pixel of streak length. Photoshop smears evenly along the whole
@@ -334,6 +341,8 @@ final class FilterEdit {
     /// works on the layer's pixels padded out, and on the transform placing that larger grid.
     var grownImage: CGImage? = nil
     var grownTransform: LayerTransform? = nil
+    /// Where the layer's own pixels sit within `grownImage`, so a 16-bit layer's pixels can be padded the same way.
+    var grownInside: CGRect? = nil
     /// How far the padding reaches beyond the layer on every side, in layer pixels.
     var grownMargin: CGFloat = 0
     /// The layer's sides at or past the canvas's edge, where Gaussian and Motion Blur carry its edge pixels on rather
@@ -498,6 +507,7 @@ final class FilterEdit {
         expanded.origin = CGPoint(x: middle.x - expanded.size.width / 2, y: middle.y - expanded.size.height / 2)
         grownImage = image
         grownTransform = expanded
+        grownInside = inside
         grownMargin = min(bounds.minX - target.minX, bounds.minY - target.minY,
                           target.maxX - bounds.maxX, target.maxY - bounds.maxY)
         try prepare(from: image, placed: expanded)
@@ -760,7 +770,28 @@ extension EditorSession {
         do {
             let grown = keepsOutline ? nil : edit.grownTransform
             let spreads = edit.kind == .gaussianBlur || edit.kind == .motionBlur || edit.kind == .bloomGlow
+            // A 16-bit layer runs the filter on its 16-bit pixels, padded as the 8-bit ones were (`DeepLayer.run`).
+            // Content-Aware Fill makes new pixels from scratch and rasterizes the layer to 8-bit instead.
+            let deep = edit.kind == .contentAwareFill ? nil : try DeepLayer.flattened(edit.original)
+            let deepGrid = keepsOutline ? nil : edit.grownImage.flatMap { grownImage in
+                edit.grownInside.map { (size: CGSize(width: grownImage.width, height: grownImage.height), inside: $0) }
+            }
             let made = try await Task.detached(priority: .userInitiated) { () -> (asset: ImportedImage, transform: LayerTransform?) in
+                if let deep {
+                    let input = try deepGrid.map { try DeepLayer.padded(deep, to: $0.size, inside: $0.inside) } ?? deep
+                    var result = try DeepLayer.run(input) { half in
+                        var run = job
+                        run.image = half
+                        return try PixelFilter.run(run)
+                    }
+                    var placed = grown
+                    if spreads, let grown, let crop = try PixelFilter.trimCrop(try DeepLayer.dithered(result)),
+                       let cropped = result.cropping(to: crop) {
+                        placed = PixelFilter.trimmedTransform(grown, crop: crop, width: result.width, height: result.height)
+                        result = cropped
+                    }
+                    return (try DeepLayer.asset(result, name: job.kind.rawValue), placed)
+                }
                 var image = try cached ?? PixelFilter.run(job)
                 var placed = grown
                 if spreads, let grown {

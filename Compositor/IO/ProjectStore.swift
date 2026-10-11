@@ -98,7 +98,8 @@ actor ProjectStore {
                 guard let destination = CGImageDestinationCreateWithData(data, UTType.png.identifier as CFString, 1, nil) else {
                     throw ProjectError.encode
                 }
-                CGImageDestinationAddImage(destination, asset.image, nil)
+                // A 16-bit layer saves its 16-bit pixels; `image` is only their dithered copy.
+                CGImageDestinationAddImage(destination, isMask ? asset.image : try DeepLayer.flattened(asset) ?? asset.image, nil)
                 guard CGImageDestinationFinalize(destination) else { throw ProjectError.encode }
                 return data as Data
             }
@@ -176,7 +177,9 @@ actor ProjectStore {
                       let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
                       let width = properties[kCGImagePropertyPixelWidth] as? Int,
                       let height = properties[kCGImagePropertyPixelHeight] as? Int,
-                      (properties[kCGImagePropertyDepth] as? Int ?? 8) <= 8 else { throw ProjectError.missingImage }
+                      // 16-bit layer images from version 12; masks stay 8-bit.
+                      case let depth = properties[kCGImagePropertyDepth] as? Int ?? 8,
+                      depth <= 8 || (depth == 16 && !isMask && manifest.version >= 12) else { throw ProjectError.missingImage }
                 if isMask { try checkSize(width: width, height: height, used: &maskPixels) }
                 else { try checkSize(width: width, height: height, used: &pixels) }
                 guard let image = CGImageSourceCreateImageAtIndex(source, 0,
@@ -187,6 +190,7 @@ actor ProjectStore {
                         kCGImageSourceShouldCacheImmediately: true
                       ] as CFDictionary) else { throw ProjectError.missingImage }
                 if isMask, !LayerMask.isValid(image) { throw ProjectError.invalid }
+                if depth == 16 { return try DeepLayer.asset(image, name: layer.name) }
                 return ImportedImage(image: image, thumbnail: thumbnail, name: layer.name)
             }
             if isMask { masks[layer.id] = asset } else { images[layer.id] = asset }

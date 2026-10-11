@@ -10,6 +10,10 @@ nonisolated struct ImportedImage: @unchecked Sendable {
     let thumbnail: CGImage
     let name: String
     var raster: RasterSnapshot? = nil
+    /// A 16-bit layer's pixels at 16 bits a channel (`DeepLayer`); `image` is then its dithered 8-bit copy. Once the
+    /// layer's painted, these are its `raster`'s base, with the strokes' 8-bit patches over them: read the whole layer
+    /// at 16 bits with `DeepLayer.flattened`.
+    var deep: CGImage? = nil
 }
 
 /// A folder brought in as images: the ones directly inside it, not its subfolders'.
@@ -101,12 +105,16 @@ actor ImageImporter {
             }
             let orientation = (properties[kCGImagePropertyOrientation] as? Int32) ?? 1
             let oriented = CIImage(cgImage: decoded).oriented(forExifOrientation: orientation)
-            // More than 8 bits a channel (16-bit PNG and TIFF, 10-bit HEIF, float): rounded to 8 with a fine noise,
-            // as a RAW is, rather than straight down, so a smooth gradient doesn't come in, or out of later edits,
-            // in steps.
+            // More than 8 bits a channel (16-bit PNG and TIFF, 10-bit HEIF, float): a 16-bit layer, which keeps them
+            // (`DeepLayer`), shown and edited through a copy rounded to 8 with a fine noise, so gradients don't step.
             let wide = decoded.bitsPerComponent > 8
-            guard let image = wide ? RawImporter.dithered(oriented, context: wideContext)
-                                   : context.createCGImage(oriented, from: oriented.extent, format: .RGBA8, colorSpace: sRGB) else {
+            if wide {
+                guard let deep = wideContext.createCGImage(oriented, from: oriented.extent, format: .RGBA16, colorSpace: sRGB) else {
+                    throw ImageImportError.unreadable
+                }
+                return try DeepLayer.asset(deep, name: url.deletingPathExtension().lastPathComponent)
+            }
+            guard let image = context.createCGImage(oriented, from: oriented.extent, format: .RGBA8, colorSpace: sRGB) else {
                 throw ImageImportError.unreadable
             }
             let scale = min(1, 96 / max(oriented.extent.width, oriented.extent.height))

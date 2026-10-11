@@ -17,15 +17,19 @@ nonisolated enum ExportError: LocalizedError {
 actor ImageExporter {
     static let shared = ImageExporter()
 
-    func render(_ snapshot: ProjectSnapshot) throws -> ExportRaster {
+    /// `sixteenBit`: flattened at 16 bits a channel, drawing 16-bit layers from their 16-bit pixels (`DeepLayer`),
+    /// for a 16-bit PNG. Normal layers come through at full precision; effects, live masks and blend modes that
+    /// need their own surface pass through 8 bits on the way.
+    func render(_ snapshot: ProjectSnapshot, sixteenBit: Bool = false) throws -> ExportRaster {
         let width = snapshot.manifest.width, height = snapshot.manifest.height
         guard (1...DocumentLimits.maxSide).contains(width), (1...DocumentLimits.maxSide).contains(height),
               width * height <= DocumentLimits.maxSurfacePixels else { throw ExportError.tooLarge }
         return try autoreleasepool {
             guard let space = CGColorSpace(name: CGColorSpace.sRGB),
                   let context = CGContext(data: nil, width: width, height: height,
-                                          bitsPerComponent: 8, bytesPerRow: width * 4, space: space,
-                                          bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else {
+                                          bitsPerComponent: sixteenBit ? 16 : 8, bytesPerRow: width * (sixteenBit ? 8 : 4), space: space,
+                                          bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+                                              | (sixteenBit ? CGBitmapInfo.byteOrder16Little.rawValue : 0)) else {
                 throw ExportError.render
             }
             context.clear(CGRect(x: 0, y: 0, width: width, height: height))
@@ -38,7 +42,8 @@ actor ImageExporter {
             }
             try LiveMaskGraph.validate(snapshot.manifest.layers)
             let live = LiveMaskRenderer(bounds: CGRect(x: 0, y: 0, width: width, height: height), source: { records[$0]?.maskSourceID }) { id, target in
-                guard let layer = records[id], let image = snapshot.images[id]?.image else { return }
+                guard let layer = records[id], let asset = snapshot.images[id] else { return }
+                let image = sixteenBit ? (try? DeepLayer.flattened(asset)) ?? asset.image : asset.image
                 let opacity = layer.effectiveOpacity(in: records)
                 let mask = snapshot.mask(for: layer).flatMap { $0.clipImage(placement: $0.placement, over: layer.transform, width: image.width, height: image.height) }
                 let effects = LayerEffectsRenderer.cached(image, mask: mask, effects: layer.effects)
@@ -119,10 +124,13 @@ actor ImageExporter {
               width * height <= DocumentLimits.maxSurfacePixels else { throw ExportError.tooLarge }
         try Task.checkCancellation()
         return try autoreleasepool {
+            // A 16-bit flattening stays 16-bit.
+            let deep = raster.image.bitsPerComponent > 8
             guard let space = CGColorSpace(name: CGColorSpace.sRGB),
-                  let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8,
-                                          bytesPerRow: width * 4, space: space,
-                                          bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { throw ExportError.render }
+                  let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: deep ? 16 : 8,
+                                          bytesPerRow: width * (deep ? 8 : 4), space: space,
+                                          bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+                                              | (deep ? CGBitmapInfo.byteOrder16Little.rawValue : 0)) else { throw ExportError.render }
             context.interpolationQuality = .high
             context.draw(raster.image, in: CGRect(x: 0, y: 0, width: width, height: height))
             guard let image = context.makeImage() else { throw ExportError.render }

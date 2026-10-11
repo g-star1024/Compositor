@@ -940,14 +940,19 @@ final class BrushStroke {
         let raster = RasterSnapshot.replacing(source: isMask ? layer.mask?.asset : layer.asset, sourceRect: sourceRect, patches: patches, crop: crop,
                                               isMask: isMask, fill: maskBackground)
         let image = try raster.makeImage()
-        return (ImportedImage(image: image, thumbnail: try raster.thumbnail(), name: layer.name, raster: raster), transform(for: crop), crop)
+        // A 16-bit layer stays one: its 16-bit pixels are still this raster's base, with the strokes over them.
+        let source = isMask ? nil : layer.asset
+        let deep = source?.deep.flatMap { raster.base === (source?.raster?.base ?? source?.image) ? $0 : nil }
+        return (ImportedImage(image: image, thumbnail: try raster.thumbnail(), name: layer.name, raster: raster, deep: deep),
+                transform(for: crop), crop)
     }
 
     func commitInput() -> BrushCommit.Input {
         let bounds = committedBounds
         return BrushCommit.Input(width: Int(bounds.width), height: Int(bounds.height), source: source,
             patches: patches.map { BrushPatch(rect: $0.rect.offsetBy(dx: -bounds.minX, dy: -bounds.minY), image: $0.image) },
-            mask: isMask, name: layer.name, sourceRect: sourceRect.offsetBy(dx: -bounds.minX, dy: -bounds.minY), fill: maskBackground)
+            mask: isMask, name: layer.name, sourceRect: sourceRect.offsetBy(dx: -bounds.minX, dy: -bounds.minY), fill: maskBackground,
+            deepSource: isMask || layer.asset?.deep == nil ? nil : layer.asset)
     }
 }
 
@@ -962,6 +967,8 @@ actor BrushCommit {
         let sourceRect: CGRect
         /// A mask's background: what a grown mask is where neither its old pixels nor the edit reach.
         var fill: CGFloat = 1
+        /// A 16-bit layer's asset (`source` is its 8-bit copy): the edit is laid onto its 16-bit pixels, so the layer stays 16-bit.
+        var deepSource: ImportedImage?
     }
     nonisolated struct Output: @unchecked Sendable {
         let asset: ImportedImage
@@ -1008,11 +1015,29 @@ actor BrushCommit {
             guard let result = tight.makeImage() else { throw ExportError.render }
             image = result
         }
+        if let layer = input.deepSource, let deep = try sixteenBit(layer, painted: context, input: input)?.cropping(to: crop) {
+            return Output(asset: try DeepLayer.asset(deep, name: input.name), pixelBounds: crop)
+        }
         let factor = min(1, 96 / CGFloat(max(image.width, image.height)))
         let width = max(1, Int(CGFloat(image.width) * factor)), height = max(1, Int(CGFloat(image.height) * factor))
         let thumb = try BrushRaster.context(width: width, height: height, mask: false)
         BrushRaster.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height), mask: false, context: thumb)
         guard let thumbnail = thumb.makeImage() else { throw ExportError.render }
         return Output(asset: ImportedImage(image: image, thumbnail: thumbnail, name: input.name), pixelBounds: crop)
+    }
+
+    /// The edit at 16 bits: the layer's 16-bit pixels, taking the edit's value wherever it changed the 8-bit ones
+    /// (`painted`, the source with the patches over it), as `DeepLayer.flattened` does for strokes.
+    private func sixteenBit(_ layer: ImportedImage, painted: CGContext, input: Input) throws -> CGImage? {
+        guard let deep = try DeepLayer.flattened(layer) else { return nil }
+        let wide = try DeepLayer.context(width: input.width, height: input.height)
+        BrushRaster.draw(deep, in: input.sourceRect, mask: false, context: wide)
+        let unpainted = try BrushRaster.context(width: input.width, height: input.height, mask: false)
+        if let source = input.source { BrushRaster.draw(source, in: input.sourceRect, mask: false, context: unpainted) }
+        guard let wideData = wide.data, let paintedData = painted.data, let unpaintedData = unpainted.data,
+              painted.bytesPerRow == unpainted.bytesPerRow else { throw ExportError.render }
+        deep_take_painted(wideData.assumingMemoryBound(to: UInt16.self), wide.bytesPerRow, paintedData.assumingMemoryBound(to: UInt8.self),
+                          unpaintedData.assumingMemoryBound(to: UInt8.self), painted.bytesPerRow, input.width, input.height)
+        return wide.makeImage()
     }
 }
