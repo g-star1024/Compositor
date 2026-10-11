@@ -18,8 +18,8 @@ actor ImageExporter {
     static let shared = ImageExporter()
 
     /// `sixteenBit`: flattened at 16 bits a channel, drawing 16-bit layers from their 16-bit pixels (`DeepLayer`),
-    /// for a 16-bit PNG. Normal layers come through at full precision; effects, live masks and blend modes that
-    /// need their own surface pass through 8 bits on the way.
+    /// for a 16-bit PNG. Layers, clipping stacks and adjustment layers come through at full precision; effects and
+    /// blend modes that need their own surface pass through 8 bits on the way.
     func render(_ snapshot: ProjectSnapshot, sixteenBit: Bool = false) throws -> ExportRaster {
         let width = snapshot.manifest.width, height = snapshot.manifest.height
         guard (1...DocumentLimits.maxSide).contains(width), (1...DocumentLimits.maxSide).contains(height),
@@ -62,6 +62,7 @@ actor ImageExporter {
                 if SeparableBlend.needsSurface(mode), SeparableBlend.draw(mode, in: target, body: { drawLayer(.normal, $0) }) { return }
                 drawLayer(mode, target)
             }
+            live.sixteenBit = sixteenBit
             live.adjustment = { records[$0]?.adjustment }
             live.adjustmentOpacity = { records[$0]?.effectiveOpacity(in: records) ?? 1 }
             live.adjustmentClip = { id, ctx in

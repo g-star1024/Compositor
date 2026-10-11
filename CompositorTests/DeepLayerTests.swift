@@ -256,6 +256,62 @@ struct DeepLayerTests {
         #expect(Set(try row(deep, 0)).count > 150)
     }
 
+    /// The share of a row's pixels between `from` and `to` holding values 8 bits can't (not a multiple of 257).
+    private func fineShare(_ values: [Int], _ from: Int, _ to: Int) -> Double {
+        let part = values[from..<to]
+        return Double(part.filter { $0 % 257 != 0 }.count) / Double(part.count)
+    }
+
+    /// Liquify, Smudge and the Blur tool paint at 16 bits into a 16-bit layer, so where they go stays smooth: at 8 bits
+    /// every pixel they touched would be a whole 8-bit step (and a smooth ramp would band).
+    @Test(arguments: [BlurToolMode.liquify, .smudge, .blur])
+    func blurToolModesKeepSixteenBits(mode: BlurToolMode) async throws {
+        guard GPUCanvasRenderer.shared != nil || mode == .blur else { return }
+        let (session, url) = try await importedSession()
+        defer { try? FileManager.default.removeItem(at: url) }
+        session.selectTool(.blur)
+        session.blurMode = mode
+        session.brushSettings = BrushSettings(diameter: 8, hardness: 0.5, red: 0, green: 0, blue: 0)
+        session.beginBrush(at: CGPoint(x: 80, y: 4))
+        for x in stride(from: 84.0, through: 170, by: 4) { session.continueBrush(at: CGPoint(x: x, y: 4)) }
+        await session.finishBrush()
+        let asset = try #require(session.activeLayer?.asset)
+        let deep = try #require(try DeepLayer.flattened(asset), "\(mode) kept the layer 16-bit")
+        let share = fineShare(try row(deep), 90, 160)
+        #expect(share > 0.8, "\(mode): \(Int(share * 100))% of the stroke's pixels finer than 8 bits")
+    }
+
+    /// Dither's result is a few levels by design; read between three runs it came out in colors. It rasterizes.
+    @Test func ditherRasterizes() async throws {
+        let (session, url) = try await importedSession()
+        defer { try? FileManager.default.removeItem(at: url) }
+        session.beginFilter(.dither)
+        session.updateFilter(FilterSettings(), preview: true)
+        await session.commitFilter()
+        #expect(session.activeLayer?.asset?.deep == nil)
+    }
+
+    /// An adjustment layer over a 16-bit layer, on its own or clipped to it, works at 16 bits in a 16-bit export: a
+    /// steep Levels comes out a smooth ramp, not bands.
+    @Test(arguments: [false, true])
+    func adjustmentLayersExportAtSixteenBits(clipped: Bool) async throws {
+        let (session, url) = try await importedSession()
+        defer { try? FileManager.default.removeItem(at: url) }
+        session.addAdjustment(.levels)
+        let id = try #require(session.activeLayerID)
+        var adjustment = try #require(session.activeLayer?.adjustment)
+        adjustment.levels.ranges[0].black = 100
+        adjustment.levels.ranges[0].white = 104
+        session.updateAdjustment(id, value: adjustment)
+        session.adjustmentEditingID = nil
+        if clipped { session.toggleClippingMask(id) }
+        #expect((session.activeLayer?.maskSourceID != nil) == clipped)
+        let snapshot = try #require(session.projectSnapshot())
+        let values = try row(try await ImageExporter.shared.render(snapshot, sixteenBit: true).image)
+        #expect(Set(values).count > 150, "\(Set(values).count) distinct values")
+        #expect(values.first! < 3 * 257 && values.last! > 65535 - 3 * 257)
+    }
+
     /// A version-11 project can't carry 16-bit pixels: older builds would misread them.
     @Test func olderVersionsCannotHoldSixteenBitImages() async throws {
         let (session, url) = try await importedSession()

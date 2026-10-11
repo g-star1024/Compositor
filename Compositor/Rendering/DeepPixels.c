@@ -83,3 +83,33 @@ void deep_take_painted(uint16_t *deep, size_t deepStride, const uint8_t *painted
         }
     });
 }
+
+void deep_extract_alpha(uint16_t *rgba, size_t stride, uint16_t *alpha, size_t width, size_t height) {
+    deep_rows(height, ^(size_t first, size_t last) {
+        for (size_t y = first; y < last; ++y) {
+            uint16_t *p = (uint16_t *)((uint8_t *)rgba + y * stride);
+            for (size_t x = 0; x < width; ++x, p += 4) {
+                uint32_t a = p[3];
+                alpha[y * width + x] = (uint16_t)a;
+                for (int c = 0; c < 3; ++c) {
+                    uint32_t v = a ? (p[c] * 65535u + a / 2) / a : 0;
+                    p[c] = (uint16_t)(v > 65535 ? 65535 : v);
+                }
+                p[3] = 65535;
+            }
+        }
+    });
+}
+
+void deep_restore_alpha(uint16_t *rgba, size_t stride, const uint16_t *alpha, size_t width, size_t height) {
+    deep_rows(height, ^(size_t first, size_t last) {
+        for (size_t y = first; y < last; ++y) {
+            uint16_t *p = (uint16_t *)((uint8_t *)rgba + y * stride);
+            for (size_t x = 0; x < width; ++x, p += 4) {
+                uint32_t a = alpha[y * width + x];
+                for (int c = 0; c < 3; ++c) p[c] = (uint16_t)((p[c] * a + 32767u) / 65535u);
+                p[3] = (uint16_t)a;
+            }
+        }
+    });
+}

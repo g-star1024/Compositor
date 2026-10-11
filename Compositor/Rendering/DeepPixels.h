@@ -29,4 +29,10 @@ void deep_merge(const uint16_t *deep, size_t deepStride, const uint8_t *lowResul
 // would round everything they cover back to 8 bits.
 void deep_take_painted(uint16_t *deep, size_t deepStride, const uint8_t *painted, const uint8_t *base, size_t stride,
                        size_t width, size_t height);
+
+// A clipping stack's surface at 16 bits, as `layer_extract_alpha` and `layer_unpremultiply_opaque` do at 8: saves each
+// pixel's alpha into `alpha` (`width` values a row) and makes the colors opaque, so the layers clipped to it blend at
+// full coverage; `deep_restore_alpha` puts the alpha back.
+void deep_extract_alpha(uint16_t *rgba, size_t stride, uint16_t *alpha, size_t width, size_t height);
+void deep_restore_alpha(uint16_t *rgba, size_t stride, const uint16_t *alpha, size_t width, size_t height);
 #endif
