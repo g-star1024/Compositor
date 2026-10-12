@@ -63,7 +63,6 @@ extension EditorSession {
         activeLayerID = nil
         renamingLayerID = nil
         projectURL = nil
-        cameFromCMYK = false
         history.reset()
     }
 

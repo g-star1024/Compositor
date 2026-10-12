@@ -55,10 +55,10 @@ struct ExportAsSheet: View {
     }
     /// The formats that can be written in a printer's inks.
     private var takesCMYK: Bool { format == .jpeg || format == .tiff || format == .pdf }
-    /// CMYK for print, remembered from the last export.
-    @State private var cmyk = UserDefaults.standard.bool(forKey: "exportCMYK")
-    /// The CMYK profile, shared with View › CMYK › Proof Colors.
-    @State private var profile = CMYK.chosen
+    /// CMYK for print: off each time, as most exports are for screens.
+    @State private var cmyk = false
+    /// The CMYK profile, as View › CMYK › Profile sets it.
+    private var profile: CMYKProfile? { session.proofProfile ?? CMYK.chosen }
     /// A PNG at 16 bits a channel: off by default, it's about twice the size.
     @State private var sixteenBit = false
     @State private var result: Encoded?
@@ -144,23 +144,13 @@ struct ExportAsSheet: View {
                 if takesCMYK {
                     GridRow {
                         Text("Color")
-                        HStack(spacing: 12) {
-                            Picker("Color", selection: $cmyk) {
-                                Text("RGB").tag(false)
-                                Text("CMYK").tag(true)
-                            }
-                            .pickerStyle(.segmented).labelsHidden().fixedSize()
-                            .help("CMYK writes the printer's inks through the profile beside it, for print")
+                        HStack(spacing: 10) {
+                            colorMenu
+                            // CMYK goes through View › CMYK › Profile's profile, named under the settings; a printer's own
+                            // can be loaded here too.
                             if cmyk {
-                                Menu(profile?.name ?? "Choose Profile") {
-                                    ForEach(CMYK.installed()) { choice in
-                                        Toggle(choice.name, isOn: Binding(get: { profile?.name == choice.name },
-                                                                          set: { if $0 { choose(choice) } }))
-                                    }
-                                    Divider()
-                                    Button("Load Profile…") { loadProfile() }
-                                }
-                                .fixedSize().help("The CMYK profile your printer uses; View › CMYK › Proof Colors shows it on the canvas")
+                                Button("Load Profile…") { loadProfile() }
+                                    .help("Use a CMYK ICC profile, such as the one your printer gave you")
                             }
                         }
                     }
@@ -193,7 +183,6 @@ struct ExportAsSheet: View {
                 Button("Export…") {
                     DialogColorSwatch.closePicker(session)
                     if format == .jpeg { UserDefaults.standard.set(options.quality, forKey: Self.qualityKey) }
-                    if takesCMYK { UserDefaults.standard.set(cmyk, forKey: "exportCMYK") }
                     if let result { finish((result.data, result.settings.format)) }
                 }
                     .configuredNativeShortcut(.return)
@@ -251,12 +240,24 @@ struct ExportAsSheet: View {
         session.proofProfile = chosen
     }
 
+    /// RGB or CMYK: one small menu, as few need CMYK. The profile CMYK goes through is View › CMYK › Profile's, named in
+    /// the line under the settings.
+    private var colorMenu: some View {
+        Menu(cmyk ? "CMYK" : "RGB") {
+            Toggle("RGB", isOn: Binding(get: { !cmyk }, set: { if $0 { cmyk = false } }))
+            Toggle("CMYK", isOn: Binding(get: { cmyk }, set: { if $0 { cmyk = true } }))
+        }
+        .menuStyle(.button).buttonStyle(.bordered).fixedSize()
+        .help("CMYK writes a printer's inks through the profile in View › CMYK › Profile")
+    }
+    }
+
     private func loadProfile() {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [UTType(filenameExtension: "icc") ?? .data, UTType(filenameExtension: "icm") ?? .data]
         panel.message = "Choose a CMYK ICC profile, such as the one your printer gave you"
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        do { choose(try CMYK.load(url)) }
+        do { session.proofProfile = try CMYK.load(url) }
         catch { self.error = error.localizedDescription }
     }
 

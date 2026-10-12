@@ -113,7 +113,7 @@ struct CMYKTests {
         #expect(gray[0...2].allSatisfy { abs($0 - 128) <= 4 } && gray[3] == 255, "gray as it is: \(gray)")
     }
 
-    /// Opening a CMYK file as a new document keeps its profile and chooses it, so proofing and Export As go back to
+    /// Opening a CMYK file as a new document keeps its profile and chooses it, so proofing and CMYK export go back to
     /// the inks it was made for.
     @Test @MainActor func openingACMYKFileChoosesItsProfile() async throws {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".psd")
@@ -123,6 +123,6 @@ struct CMYKTests {
         session.confirmConversions = { _ in true }
         await session.importImages([url])
         #expect(session.document?.layers.count == 2)
-        #expect(session.cameFromCMYK && session.proofProfile?.name == "Generic CMYK Profile")
+        #expect(session.proofProfile?.name == "Generic CMYK Profile")
     }
 }
