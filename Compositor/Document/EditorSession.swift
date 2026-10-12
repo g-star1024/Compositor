@@ -285,6 +285,8 @@ final class EditorSession {
     var showsGamutWarning = false { didSet { if showsGamutWarning, proofProfile == nil { proofProfile = CMYK.chosen }; brushRevision += 1 } }
     /// The CMYK profile proofing and CMYK export use, as View › CMYK › Profile last set it.
     var proofProfile: CMYKProfile? { didSet { CMYK.chosen = proofProfile; brushRevision += 1 } }
+    /// The document began as a CMYK file: Export As starts on CMYK, through the file's own profile.
+    var cameFromCMYK = false
     /// Layout grid (View > Show > Grid). Off until turned on; independent of the 800% pixel grid.
     var showsGrid = ToolDefaults.bool("grid", false) { didSet { ToolDefaults.set(showsGrid, "grid") } }
     /// The layout grid's spacing and subdivisions (View > Grid Settings…). The person's, not the project's.
@@ -854,6 +856,15 @@ final class EditorSession {
           let point = document == nil ? nil : request.point
           for (url, scoped) in request.files {
             defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+            // A CMYK file making a new document: its profile is kept and chosen for proofing and export.
+            let startsDocument = document == nil
+            var psdProfile: CMYKProfile?
+            defer {
+                if startsDocument, document != nil, let profile = psdProfile ?? CMYK.profile(ofImageAt: url) {
+                    proofProfile = CMYK.adopt(profile)
+                    cameFromCMYK = true
+                }
+            }
             do {
                 guard url.isFileURL else { throw ImageImportError.unsupported }
                 let usedPixels = document?.layers.reduce(0) { total, layer in
@@ -880,6 +891,7 @@ final class EditorSession {
                     let imported: PSDImport
                     do {
                         let parsed = try await ImageImporter.shared.loadPhotoshop(url, remainingPixels: DocumentLimits.documentPixelBudget - usedPixels)
+                        psdProfile = parsed.cmykProfile
                         // Only a background: Photoshop writes no layer records, just the merged image, so that is
                         // what comes in, as one layer.
                         if parsed.layers.isEmpty {
