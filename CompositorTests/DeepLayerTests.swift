@@ -320,6 +320,93 @@ struct DeepLayerTests {
         #expect(values.first! < 3 * 257 && values.last! > 65535 - 3 * 257)
     }
 
+    /// A channel averaged down the rows and over 9 pixels along them, in 8-bit steps: what's left once fine noise is
+    /// averaged out.
+    private func averaged(_ image: CGImage, channel: Int) throws -> [Double] {
+        let context = try DeepLayer.canonical(image)
+        let pixels = try #require(context.data).assumingMemoryBound(to: UInt16.self)
+        let width = image.width, height = image.height
+        var columns = [Double](repeating: 0, count: width)
+        for x in 0..<width {
+            for y in 0..<height { columns[x] += Double(pixels[(y * width + x) * 4 + channel]) / Double(height) / 257 }
+        }
+        var smoothed: [Double] = []
+        for x in 8..<(width - 8) { smoothed.append(columns[(x - 4)...(x + 4)].reduce(0, +) / 9) }
+        return smoothed
+    }
+
+    /// The sharpest bend along a channel once fine noise is averaged out: how much its rise over 12 pixels changes from
+    /// one 12 to the next, in 8-bit steps. A smooth ramp barely bends; a band's edge does.
+    private func bends(_ image: CGImage, channel: Int) throws -> Double {
+        let values = try averaged(image, channel: channel)
+        var worst = 0.0
+        for x in 12..<(values.count - 12) {
+            worst = max(worst, abs((values[x + 12] - values[x]) - (values[x] - values[x - 12])))
+        }
+        return worst
+    }
+
+    /// What an 8-bit operation makes of a 16-bit image, near exactly: its results on many randomly dithered 8-bit copies,
+    /// averaged.
+    private func reference(_ deep: CGImage, through operation: (CGImage) throws -> CGImage) throws -> CGImage {
+        let width = deep.width, height = deep.height, copies = 64
+        let source = try DeepLayer.canonical(deep)
+        let input = try #require(source.data).assumingMemoryBound(to: UInt16.self)
+        var sum = [Double](repeating: 0, count: width * height * 4)
+        var generator = SystemRandomNumberGenerator()
+        for _ in 0..<copies {
+            let copy = try BrushRaster.context(width: width, height: height, mask: false)
+            let bytes = try #require(copy.data).assumingMemoryBound(to: UInt8.self)
+            for i in 0..<(width * height * 4) {
+                let value = Double(input[i]) / 257 + Double.random(in: 0..<1, using: &generator)
+                bytes[i] = UInt8(min(255, value.rounded(.down)))
+            }
+            let result = try BrushRaster.copy(try operation(try #require(copy.makeImage())))
+            let out = try #require(result.data).assumingMemoryBound(to: UInt8.self)
+            for i in 0..<(width * height * 4) { sum[i] += Double(out[i]) / Double(copies) }
+        }
+        let context = try DeepLayer.context(width: width, height: height)
+        let pixels = try #require(context.data).assumingMemoryBound(to: UInt16.self)
+        for i in 0..<(width * height * 4) { pixels[i] = UInt16(min(65535, (sum[i] * 257).rounded())) }
+        return try #require(context.makeImage())
+    }
+
+    /// Camera Raw's Saturation mixes channels: each output channel follows all three inputs. With the channels stepped
+    /// together it banded a smooth colored ramp; stepped channel by channel, and fitted across its 8-bit wobble, it
+    /// stays smoother than even its preview's average.
+    @Test func cameraRawSaturationStaysSmooth() throws {
+        let context = try DeepLayer.context(width: Self.width, height: Self.height)
+        let pixels = try #require(context.data).assumingMemoryBound(to: UInt16.self)
+        for y in 0..<Self.height {
+            for x in 0..<Self.width {
+                let t = Double(x) / Double(Self.width - 1), i = (y * Self.width + x) * 4
+                pixels[i] = UInt16(((100 + 4 * t) / 255 * 65535).rounded())
+                pixels[i + 1] = UInt16(((90 + 3 * t) / 255 * 65535).rounded())
+                pixels[i + 2] = UInt16(((120 + 5 * t) / 255 * 65535).rounded())
+                pixels[i + 3] = 65535
+            }
+        }
+        let ramp = try #require(context.makeImage())
+        var settings = CameraRawSettings()
+        settings.saturation = 100
+        settings.vibrance = 100
+        let mixed = try DeepLayer.run(ramp, mixesChannels: true) { try settings.apply($0) }
+        let plain = try DeepLayer.run(ramp) { try settings.apply($0) }
+        // Camera Raw at 8 bits on randomly dithered copies, averaged: what its preview shows once the noise is averaged
+        // out. It wobbles a little from one 8-bit value to the next, and that's what bands once stretched.
+        let preview = try reference(ramp) { try settings.apply($0) }
+        var smooth = 0.0, together = 0.0, wobble = 0.0
+        for channel in 0..<3 {
+            smooth = max(smooth, try bends(mixed, channel: channel))
+            together = max(together, try bends(plain, channel: channel))
+            wobble = max(wobble, try bends(preview, channel: channel))
+        }
+        // No more than the preview's own (its average is random: some leeway), and well under the bands it had.
+        #expect(smooth < wobble * 1.5 && smooth < together / 3,
+                "bends of \(smooth) steps, \(together) with the channels stepped together, \(wobble) in the preview")
+        #expect(try row(mixed) != row(ramp), "saturated")
+    }
+
     /// A version-11 project can't carry 16-bit pixels: older builds would misread them.
     @Test func olderVersionsCannotHoldSixteenBitImages() async throws {
         let (session, url) = try await importedSession()

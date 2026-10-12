@@ -29,6 +29,9 @@ nonisolated enum FilterKind: String, CaseIterable, Sendable {
     /// Filters made wholly in Core Image, which works at 16 bits as readily as at 8: a 16-bit layer runs them once, on its
     /// 16-bit pixels, rather than three times through `DeepLayer.run`.
     var runsAtSixteenBits: Bool { self == .gaussianBlur || self == .motionBlur || self == .bloomGlow }
+    /// Filters whose output channels each depend on all three input channels (Camera Raw's color, and the ones that work
+    /// from brightness), which a 16-bit layer runs the slower, channel-by-channel way (`DeepLayer.run`).
+    var mixesChannels: Bool { self == .cameraRaw || self == .tonalContrast || self == .scanlines }
     /// For the color adjustments whose channels mix, their color lookup, to apply to a 16-bit layer
     /// (`LayerAdjustment.sixteenBitLookup`); nil for the rest.
     func sixteenBitLookup(_ settings: FilterSettings) -> (cube: Data, dimension: Int)? {
@@ -823,7 +826,7 @@ extension EditorSession {
                         run.sixteenBit = true
                         result = try PixelFilter.run(run)
                     } else {
-                        result = try DeepLayer.run(input) { half in
+                        result = try DeepLayer.run(input, mixesChannels: job.kind.mixesChannels) { half in
                             var run = job
                             run.image = half
                             return try PixelFilter.run(run)

@@ -76,31 +76,43 @@ nonisolated enum DeepLayer {
         return ImportedImage(image: image, thumbnail: try PixelAdjust.thumbnail(of: image), name: name, deep: deep)
     }
 
-    /// Runs an 8-bit operation on a 16-bit image without losing its precision: on its rounded-down 8-bit values and on
-    /// those one and four steps up, then reads the 16-bit result off between the three (`deep_merge`). The operation
-    /// must return an image the size it was given.
-    static func run(_ deep: CGImage, through operation: (CGImage) throws -> CGImage) throws -> CGImage {
+    /// Runs an 8-bit operation on a 16-bit image without losing its precision: on 8-bit values a little below its
+    /// colors (rounded as dither rounds, `deep_split`) and on those one, two and four steps up, then reads the 16-bit
+    /// result off between them (`deep_merge`). The operation must return an image the size it was given.
+    /// `mixesChannels`, for an operation whose output channels each depend on all three inputs (Camera Raw's color
+    /// sliders): each input channel is stepped on its own, ten runs, and every output channel adds up how each moves it.
+    /// Read the other way, those came out banded.
+    static func run(_ deep: CGImage, mixesChannels: Bool = false, through operation: (CGImage) throws -> CGImage) throws -> CGImage {
         let width = deep.width, height = deep.height
         let source = try canonical(deep)
         guard let input = source.data else { throw ExportError.render }
-        let results = try [0, 1, 4].map { step -> CGContext in
+        // (step, channel): -1 steps every channel together.
+        let steps: [Int32] = [1, 2, 4]
+        let channels: [Int32] = mixesChannels ? [0, 1, 2] : [-1]
+        var splits: [(step: Int32, channel: Int32)] = [(0, -1)]
+        for step in steps { for channel in channels { splits.append((step, channel)) } }
+        let results = try splits.map { step, channel -> CGContext in
             let context = try BrushRaster.context(width: width, height: height, mask: false)
             guard let bytes = context.data else { throw ExportError.render }
             deep_split(input.assumingMemoryBound(to: UInt16.self), source.bytesPerRow, bytes.assumingMemoryBound(to: UInt8.self),
-                       context.bytesPerRow, width, height, Int32(step))
+                       context.bytesPerRow, width, height, step, channel)
             guard let image = context.makeImage() else { throw ExportError.render }
             let result = try operation(image)
             guard result.width == width, result.height == height else { throw ExportError.render }
             return try BrushRaster.copy(result)
         }
         let out = try context(width: width, height: height)
-        guard let low = results[0].data, let near = results[1].data, let far = results[2].data, let outData = out.data else {
-            throw ExportError.render
+        let buffers = results.compactMap { $0.data.map { UnsafePointer($0.assumingMemoryBound(to: UInt8.self)) } }
+        guard buffers.count == results.count, let outData = out.data else { throw ExportError.render }
+        // Each step's three runs, red, green and blue stepped alone; or its one run, read for all three.
+        let per = mixesChannels ? 3 : 1
+        func runs(_ index: Int) -> [UnsafePointer<UInt8>?] {
+            (0..<3).map { buffers[1 + index * per + (mixesChannels ? $0 : 0)] }
         }
         withExtendedLifetime((source, results)) {
-            deep_merge(input.assumingMemoryBound(to: UInt16.self), source.bytesPerRow, low.assumingMemoryBound(to: UInt8.self),
-                       near.assumingMemoryBound(to: UInt8.self), far.assumingMemoryBound(to: UInt8.self), results[0].bytesPerRow,
-                       outData.assumingMemoryBound(to: UInt16.self), out.bytesPerRow, width, height)
+            deep_merge(input.assumingMemoryBound(to: UInt16.self), source.bytesPerRow, buffers[0], runs(0), runs(1), runs(2),
+                       results[0].bytesPerRow, outData.assumingMemoryBound(to: UInt16.self), out.bytesPerRow, width, height,
+                       mixesChannels ? 1 : 0)
         }
         guard let result = out.makeImage() else { throw ExportError.render }
         return result
