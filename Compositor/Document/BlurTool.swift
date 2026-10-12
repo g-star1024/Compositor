@@ -48,7 +48,7 @@ extension EditorSession {
         }
         var deepRender: ((CGRect) -> CGImage?)?
         if !isMask, let asset = layer.asset, asset.deep != nil {
-            // Only the stroke's commit asks for it, so the 16-bit sample is made then, once.
+            // Made once, when the brush first reaches the layer.
             var deepSoft: CIImage?
             deepRender = { part in
                 if deepSoft == nil {
@@ -63,6 +63,11 @@ extension EditorSession {
                                                                                   width: part.width, height: part.height),
                     format: .RGBA16, colorSpace: CGColorSpace(name: CGColorSpace.sRGB)!)
             }
+        }
+        if let deepRender {
+            // While painting, the 16-bit sample dithered down: rounded straight to 8 bits, a smooth 16-bit layer's
+            // softened copy came out in bands until the stroke ended.
+            return ((sharp, region, true), { part in deepRender(part).flatMap { try? DeepLayer.dithered($0) } ?? render(part) }, deepRender)
         }
         return ((sharp, region, true), render, deepRender)
     }
