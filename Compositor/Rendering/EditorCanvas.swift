@@ -2646,7 +2646,8 @@ extension CanvasView {
             return hideGPUView(dirtyRect)
         }
         if view.isHidden { view.isHidden = false }
-        renderer.present(frame, in: view.metalLayer)
+        // A 16-bit or HDR layer has tones between the screen's 8-bit levels: dithered on the way, not rounded into bands.
+        renderer.present(frame, in: view.metalLayer, dither: document.layers.contains { $0.asset?.deep != nil })
         return true
     }
 
@@ -3060,6 +3061,11 @@ extension CanvasView {
             let placed: CIImage?
             if let shaped = session.shapeTransformPreview(for: layer, transform: transform) {
                 placed = placement.place(shaped, transform: transform)
+            } else if let asset = layer.asset, session.hueSaturation?.previewImage(for: layer.id) == nil,
+                      session.levels?.previewImage(for: layer.id) == nil, session.filterEdit?.previewImage(for: layer.id) == nil,
+                      let full = DeepLayer.canvasImage(asset) {
+                // A 16-bit layer from its own pixels, so an adjustment over it previews as it will export: smooth.
+                placed = placement.place(full, transform: transform)
             } else if let raster = layer.asset?.raster, session.hueSaturation?.previewImage(for: layer.id) == nil,
                       session.levels?.previewImage(for: layer.id) == nil, session.filterEdit?.previewImage(for: layer.id) == nil {
                 placed = placement.place(raster, transform: transform)
