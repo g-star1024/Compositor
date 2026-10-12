@@ -36,8 +36,11 @@ nonisolated enum DeepLayer {
         let wide = try canonical(deep)
         let target = try BrushRaster.context(width: deep.width, height: deep.height, mask: false)
         guard let source = wide.data, let pixels = target.data else { throw ExportError.render }
-        dither_quantize16(source.assumingMemoryBound(to: UInt16.self), pixels.assumingMemoryBound(to: UInt8.self),
-                          deep.width, deep.height, target.bytesPerRow)
+        // Held to the end of the call: optimized, Swift may free a context right after its last use, its `data`.
+        withExtendedLifetime(wide) {
+            dither_quantize16(source.assumingMemoryBound(to: UInt16.self), pixels.assumingMemoryBound(to: UInt8.self),
+                              deep.width, deep.height, target.bytesPerRow)
+        }
         guard let result = target.makeImage() else { throw ExportError.render }
         return result
     }
@@ -57,9 +60,11 @@ nonisolated enum DeepLayer {
         BrushRaster.draw(base, in: raster.baseRect, mask: false, context: unpainted)
         guard painted.width == width, painted.height == height, let wholeData = whole.data, let paintedData = painted.data,
               let unpaintedData = unpainted.data else { throw ExportError.render }
-        deep_take_painted(wholeData.assumingMemoryBound(to: UInt16.self), whole.bytesPerRow,
-                          paintedData.assumingMemoryBound(to: UInt8.self), unpaintedData.assumingMemoryBound(to: UInt8.self),
-                          painted.bytesPerRow, width, height)
+        withExtendedLifetime((painted, unpainted)) {
+            deep_take_painted(wholeData.assumingMemoryBound(to: UInt16.self), whole.bytesPerRow,
+                              paintedData.assumingMemoryBound(to: UInt8.self), unpaintedData.assumingMemoryBound(to: UInt8.self),
+                              painted.bytesPerRow, width, height)
+        }
         guard let result = whole.makeImage() else { throw ExportError.render }
         return result
     }
@@ -92,9 +97,11 @@ nonisolated enum DeepLayer {
         guard let low = results[0].data, let near = results[1].data, let far = results[2].data, let outData = out.data else {
             throw ExportError.render
         }
-        deep_merge(input.assumingMemoryBound(to: UInt16.self), source.bytesPerRow, low.assumingMemoryBound(to: UInt8.self),
-                   near.assumingMemoryBound(to: UInt8.self), far.assumingMemoryBound(to: UInt8.self), results[0].bytesPerRow,
-                   outData.assumingMemoryBound(to: UInt16.self), out.bytesPerRow, width, height)
+        withExtendedLifetime((source, results)) {
+            deep_merge(input.assumingMemoryBound(to: UInt16.self), source.bytesPerRow, low.assumingMemoryBound(to: UInt8.self),
+                       near.assumingMemoryBound(to: UInt8.self), far.assumingMemoryBound(to: UInt8.self), results[0].bytesPerRow,
+                       outData.assumingMemoryBound(to: UInt16.self), out.bytesPerRow, width, height)
+        }
         guard let result = out.makeImage() else { throw ExportError.render }
         return result
     }
@@ -114,9 +121,14 @@ nonisolated enum DeepLayer {
         return result
     }
 
+    /// Core Image working in full floats: its default, half floats, holds only about three bits more than 8, which a
+    /// steep Levels after a blur would show as bands.
+    static let ciContext = CIContext(options: [.workingColorSpace: NSNull(), .outputColorSpace: NSNull(),
+                                               .workingFormat: CIFormat.RGBAf])
+
     /// A Core Image result rendered at 16 bits, as `PixelAdjust.render` renders one at 8.
     static func render(_ image: CIImage, width: Int, height: Int) throws -> CGImage {
-        guard let result = PixelAdjust.ciContext.createCGImage(image, from: CGRect(x: 0, y: 0, width: width, height: height),
+        guard let result = ciContext.createCGImage(image, from: CGRect(x: 0, y: 0, width: width, height: height),
                 format: .RGBA16, colorSpace: CGColorSpace(name: CGColorSpace.sRGB)!) else { throw ExportError.render }
         return result
     }

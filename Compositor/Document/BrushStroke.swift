@@ -1081,8 +1081,11 @@ actor BrushCommit {
         if let source = input.source { BrushRaster.draw(source, in: input.sourceRect, mask: false, context: unpainted) }
         guard let wideData = wide.data, let paintedData = painted.data, let unpaintedData = unpainted.data,
               painted.bytesPerRow == unpainted.bytesPerRow else { throw ExportError.render }
-        deep_take_painted(wideData.assumingMemoryBound(to: UInt16.self), wide.bytesPerRow, paintedData.assumingMemoryBound(to: UInt8.self),
-                          unpaintedData.assumingMemoryBound(to: UInt8.self), painted.bytesPerRow, input.width, input.height)
+        // Held to the end of the call: optimized, Swift may free a context right after its last use, its `data`.
+        withExtendedLifetime(unpainted) {
+            deep_take_painted(wideData.assumingMemoryBound(to: UInt16.self), wide.bytesPerRow, paintedData.assumingMemoryBound(to: UInt8.self),
+                              unpaintedData.assumingMemoryBound(to: UInt8.self), painted.bytesPerRow, input.width, input.height)
+        }
         return wide.makeImage()
     }
 }

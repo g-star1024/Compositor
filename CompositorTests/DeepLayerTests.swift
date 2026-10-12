@@ -103,6 +103,14 @@ struct DeepLayerTests {
         let asset = try #require(session.activeLayer?.asset)
         let deep = try #require(asset.deep, "the blurred layer is still 16-bit")
         #expect(deep.width == asset.image.width && deep.height == asset.image.height)
+        // Run once in Core Image at 16 bits: a blurred straight ramp is the same ramp, away from its ends.
+        let values = try row(deep)
+        var worst = 0.0
+        for x in 16..<(Self.width - 16) {
+            let ideal = (100 + 4 * Double(x) / Double(Self.width - 1)) / 255 * 65535
+            worst = max(worst, abs(Double(values[x]) - ideal))
+        }
+        #expect(worst < 26, "within a tenth of an 8-bit step: worst \(worst / 257) steps off")
     }
 
     @Test func savingAndReopeningKeepsTheSixteenBitPixels() async throws {
