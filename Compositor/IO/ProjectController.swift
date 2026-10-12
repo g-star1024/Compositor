@@ -412,11 +412,12 @@ final class ProjectController {
 
 /// What File › Export As… writes.
 enum ExportFormat: String, CaseIterable {
-    case png = "PNG", jpeg = "JPEG", pdf = "PDF"
+    case png = "PNG", jpeg = "JPEG", tiff = "TIFF", pdf = "PDF"
     var type: UTType {
         switch self {
         case .png: .png
         case .jpeg: .jpeg
+        case .tiff: .tiff
         case .pdf: .pdf
         }
     }
