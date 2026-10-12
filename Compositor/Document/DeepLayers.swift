@@ -153,3 +153,47 @@ nonisolated enum DeepLayer {
         return result
     }
 }
+
+extension EditorSession {
+    /// Whether the active layer can change between 8 and 16 bits a channel: one layer of pixels, or a blank one (not
+    /// text, an adjustment or a folder, which have none of their own to keep).
+    var canConvertLayerDepth: Bool {
+        guard canEditLayers, selectedLayerIDs.count <= 1, let layer = activeLayer else { return false }
+        return layer.liveText == nil && layer.adjustment == nil && !layer.isGroup
+    }
+
+    /// The Layers panel's Convert to 16-Bit / Convert to 8-Bit, as one undo step. To 16 bits the pixels stay as they
+    /// are and everything after keeps the extra precision (a blank layer becomes one to paint gradients on); to 8 bits
+    /// they're dithered down, halving the layer's memory and file size.
+    func convertLayerDepth() {
+        guard canConvertLayerDepth, let document, let index = document.layers.firstIndex(where: { $0.id == activeLayerID })
+        else { return }
+        let layer = document.layers[index]
+        guard let asset = layer.asset else {
+            // A blank layer has no pixels yet: it gets clear 16-bit ones over the canvas, to paint and fill into.
+            do {
+                let clear = try DeepLayer.context(width: document.width, height: document.height)
+                guard let deep = clear.makeImage() else { return }
+                let converted = try DeepLayer.asset(deep, name: layer.name)
+                beginEdit("Convert to 16-Bit")
+                self.document?.layers[index].asset = converted
+                self.document?.layers[index].transform = LayerTransform(origin: .zero, size: document.size)
+                endEdit()
+            } catch { brushError = error.localizedDescription }
+            return
+        }
+        let converted: ImportedImage
+        do {
+            if let deep = try DeepLayer.flattened(asset) {
+                let image = try DeepLayer.dithered(deep)
+                converted = ImportedImage(image: image, thumbnail: try PixelAdjust.thumbnail(of: image), name: asset.name)
+            } else {
+                converted = ImportedImage(image: asset.image, thumbnail: asset.thumbnail, name: asset.name,
+                                          deep: try DeepLayer.image(asset.image))
+            }
+        } catch { brushError = error.localizedDescription; return }
+        beginEdit(asset.deep == nil ? "Convert to 16-Bit" : "Convert to 8-Bit")
+        self.document?.layers[index].asset = converted
+        endEdit()
+    }
+}

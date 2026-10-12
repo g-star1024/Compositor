@@ -407,6 +407,47 @@ struct DeepLayerTests {
         #expect(try row(mixed) != row(ramp), "saturated")
     }
 
+    /// Convert to 16-Bit on a blank layer gives it clear 16-bit pixels; a gradient drawn on it then comes out at 16 bits,
+    /// where 8 bits could only hold a few levels of a gentle one. Convert to 8-Bit dithers it back down, and undo returns.
+    @Test func blankLayersConvertToSixteenBitsForSmoothGradients() async throws {
+        let session = EditorSession()
+        session.createDocument(width: Self.width, height: Self.height)
+        session.addBlankLayer()
+        #expect(session.activeLayer?.asset == nil && session.canConvertLayerDepth)
+        session.convertLayerDepth()
+        #expect(session.activeLayer?.depthLabel == "16-Bits")
+        // A gentle gradient: black to a dark gray, only 16 8-bit levels across the canvas.
+        session.foregroundColor = .black
+        session.backgroundColor = PaletteColor(red: 16 / 255, green: 16 / 255, blue: 16 / 255)
+        session.selectTool(.gradient)
+        session.gradientSettings.style = .foregroundToBackground
+        session.beginGradient(at: CGPoint(x: 0.5, y: 4))
+        session.moveGradient(end: CGPoint(x: Double(Self.width) - 0.5, y: 4))
+        session.endGradientDrag()
+        await session.commitGradient()
+        let asset = try #require(session.activeLayer?.asset)
+        let deep = try #require(try DeepLayer.flattened(asset), "the gradient kept the layer 16-bit")
+        let values = try row(deep)
+        #expect(Set(values).count > 100, "a smooth gradient: \(Set(values).count) distinct values, not 16 levels")
+        session.convertLayerDepth()
+        #expect(session.activeLayer?.asset?.deep == nil && session.activeLayer?.depthLabel == nil)
+        session.undo()
+        #expect(session.activeLayer?.asset?.deep != nil, "undo brings the 16 bits back")
+    }
+
+    /// An 8-bit layer converted to 16 bits keeps its pixels exactly; a steep Levels afterwards is then worked at 16 bits.
+    @Test func eightBitLayersConvertToSixteenBits() async throws {
+        let (session, url) = try await importedSession()
+        defer { try? FileManager.default.removeItem(at: url) }
+        session.convertLayerDepth()
+        let eight = try #require(session.activeLayer?.asset)
+        #expect(eight.deep == nil)
+        session.convertLayerDepth()
+        let sixteen = try #require(session.activeLayer?.asset)
+        let deep = try #require(sixteen.deep)
+        #expect(try row(deep) == row(try DeepLayer.image(eight.image)), "the same pixels, now 16-bit")
+    }
+
     /// A version-11 project can't carry 16-bit pixels: older builds would misread them.
     @Test func olderVersionsCannotHoldSixteenBitImages() async throws {
         let (session, url) = try await importedSession()
