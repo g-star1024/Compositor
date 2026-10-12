@@ -529,16 +529,19 @@ extension EditorSession {
         defer { isProjectBusy = false }
         let job = HueSaturationJob(image: edit.original.image, settings: settings,
                                    selection: edit.selection, pixelToDocument: edit.pixelToDocument, thumbnail: true)
-        // A 16-bit layer keeps its precision (`DeepLayer.run`).
+        // A 16-bit layer keeps its precision (`DeepLayer`).
         let asset: ImportedImage
         let deep: CGImage?
         do { deep = try DeepLayer.flattened(edit.original) } catch { brushError = error.localizedDescription; return }
         if let deep {
             do {
                 asset = try await Task.detached(priority: .userInitiated) {
-                    let result = try DeepLayer.run(deep) { half in
-                        try HueSaturationFilter.run(HueSaturationJob(image: half, settings: job.settings, selection: job.selection,
-                                                                     pixelToDocument: job.pixelToDocument, thumbnail: false)).image
+                    // Through its color lookup at 16 bits: its channels mix, which the three runs of `DeepLayer.run` misread.
+                    var result = try DeepLayer.lookup(deep, cube: HueSaturationFilter.cube(job.settings),
+                                                      dimension: HueSaturationFilter.dimension)
+                    if let selection = job.selection {
+                        result = try PixelAdjust.blend(result, over: deep, through: selection, pixelToDocument: job.pixelToDocument,
+                                                       isMask: false, sixteenBit: true)
                     }
                     return try DeepLayer.asset(result, name: edit.original.name)
                 }.value

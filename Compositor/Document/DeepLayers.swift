@@ -99,6 +99,21 @@ nonisolated enum DeepLayer {
         return result
     }
 
+    /// A color lookup (`cube`, `dimension`³ RGBA floats as Core Image's color cube) applied to 16-bit pixels, smoothly
+    /// between its points. For operations whose channels mix (Hue/Saturation, Black & White, Color Balance, Gradient
+    /// Map): `run` reads each channel's result off its own input, which they don't follow, and they came out banded.
+    static func lookup(_ deep: CGImage, cube: Data, dimension: Int) throws -> CGImage {
+        guard cube.count >= dimension * dimension * dimension * 4 * MemoryLayout<Float>.size else { throw ExportError.render }
+        let context = try canonical(deep)
+        guard let data = context.data else { throw ExportError.render }
+        cube.withUnsafeBytes { raw in
+            deep_cube_apply(data.assumingMemoryBound(to: UInt16.self), context.bytesPerRow, deep.width, deep.height,
+                            raw.assumingMemoryBound(to: Float.self).baseAddress!, Int32(dimension))
+        }
+        guard let result = context.makeImage() else { throw ExportError.render }
+        return result
+    }
+
     /// A Core Image result rendered at 16 bits, as `PixelAdjust.render` renders one at 8.
     static func render(_ image: CIImage, width: Int, height: Int) throws -> CGImage {
         guard let result = PixelAdjust.ciContext.createCGImage(image, from: CGRect(x: 0, y: 0, width: width, height: height),

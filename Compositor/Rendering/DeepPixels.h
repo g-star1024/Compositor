@@ -35,4 +35,9 @@ void deep_take_painted(uint16_t *deep, size_t deepStride, const uint8_t *painted
 // full coverage; `deep_restore_alpha` puts the alpha back.
 void deep_extract_alpha(uint16_t *rgba, size_t stride, uint16_t *alpha, size_t width, size_t height);
 void deep_restore_alpha(uint16_t *rgba, size_t stride, const uint16_t *alpha, size_t width, size_t height);
+
+// A color lookup at 16 bits, as `cube_apply` at 8: `cube` is `dimension`³ RGBA floats, red fastest, as Core Image's
+// color cube. Operations whose channels mix (Hue/Saturation, Black & White) go this way rather than through the three
+// runs, which read each channel's result off that channel's own input alone.
+void deep_cube_apply(uint16_t *pixels, size_t stride, size_t width, size_t height, const float *cube, int dimension);
 #endif

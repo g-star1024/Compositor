@@ -113,3 +113,38 @@ void deep_restore_alpha(uint16_t *rgba, size_t stride, const uint16_t *alpha, si
         }
     });
 }
+
+void deep_cube_apply(uint16_t *pixels, size_t stride, size_t width, size_t height, const float *cube, int dimension) {
+    const float scale = (dimension - 1) / 65535.0f;
+    const size_t dy = dimension, dz = (size_t)dimension * dimension;
+    const size_t sx = 4, sy = dy * 4, sz = dz * 4;
+    deep_rows(height, ^(size_t first, size_t last) {
+        for (size_t y = first; y < last; ++y) {
+            uint16_t *p = (uint16_t *)((uint8_t *)pixels + y * stride);
+            for (size_t x = 0; x < width; ++x, p += 4) {
+                float alpha = p[3];
+                if (!alpha) continue;
+                float fraction[3];
+                int lo[3];
+                for (int channel = 0; channel < 3; ++channel) {
+                    float position = fminf(65535, p[channel] * 65535.0f / alpha) * scale;
+                    lo[channel] = (int)position;
+                    if (lo[channel] > dimension - 2) lo[channel] = dimension - 2;
+                    fraction[channel] = position - lo[channel];
+                }
+                const float *base = cube + ((size_t)lo[0] + lo[1] * dy + lo[2] * dz) * 4;
+                for (int channel = 0; channel < 3; ++channel) {
+                    const float *c = base + channel;
+                    float x00 = c[0] + (c[sx] - c[0]) * fraction[0];
+                    float x10 = c[sy] + (c[sy + sx] - c[sy]) * fraction[0];
+                    float x01 = c[sz] + (c[sz + sx] - c[sz]) * fraction[0];
+                    float x11 = c[sz + sy] + (c[sz + sy + sx] - c[sz + sy]) * fraction[0];
+                    float y0 = x00 + (x10 - x00) * fraction[1];
+                    float y1 = x01 + (x11 - x01) * fraction[1];
+                    float result = y0 + (y1 - y0) * fraction[2];
+                    p[channel] = (uint16_t)fminf(alpha, fmaxf(0, roundf(result * alpha)));
+                }
+            }
+        }
+    });
+}

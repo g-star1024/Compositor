@@ -26,6 +26,18 @@ nonisolated enum FilterKind: String, CaseIterable, Sendable {
     var isAutomatic: Bool { self == .contentAwareFill || self == .removeBackground }
     /// The Filter menu's own filters, which Last Filter can run again; not Content-Aware Fill or the Image menu's.
     var repeatsAsLastFilter: Bool { self != .contentAwareFill && !isImageAdjustment }
+    /// For the color adjustments whose channels mix, their color lookup, to apply to a 16-bit layer
+    /// (`LayerAdjustment.sixteenBitLookup`); nil for the rest.
+    func sixteenBitLookup(_ settings: FilterSettings) -> (cube: Data, dimension: Int)? {
+        var adjustment: LayerAdjustment
+        switch self {
+        case .blackWhite: adjustment = LayerAdjustment(kind: .blackWhite); adjustment.blackWhite = settings.blackWhite
+        case .colorBalance: adjustment = LayerAdjustment(kind: .colorBalance); adjustment.colorBalance = settings.colorBalance
+        case .gradientMap: adjustment = LayerAdjustment(kind: .gradientMap); adjustment.gradientMap = settings.gradientMap
+        default: return nil
+        }
+        return adjustment.sixteenBitLookup
+    }
     /// Color adjustments: in the Image menu (and editable as adjustment layers), not under Filter.
     var isImageAdjustment: Bool {
         self == .curves || self == .exposure || self == .gradientMap || self == .grain
@@ -780,6 +792,15 @@ extension EditorSession {
                 edit.grownInside.map { (size: CGSize(width: grownImage.width, height: grownImage.height), inside: $0) }
             }
             let made = try await Task.detached(priority: .userInitiated) { () -> (asset: ImportedImage, transform: LayerTransform?) in
+                if let deep, let lookup = job.kind.sixteenBitLookup(job.settings) {
+                    // Channels that mix go through the adjustment's color lookup at 16 bits.
+                    var result = try DeepLayer.lookup(deep, cube: lookup.cube, dimension: lookup.dimension)
+                    if let selection = job.selection {
+                        result = try PixelAdjust.blend(result, over: deep, through: selection, pixelToDocument: job.mapping,
+                                                       isMask: false, sixteenBit: true)
+                    }
+                    return (try DeepLayer.asset(result, name: job.kind.rawValue), grown)
+                }
                 if let deep {
                     let input = try deepGrid.map { try DeepLayer.padded(deep, to: $0.size, inside: $0.inside) } ?? deep
                     var result = try DeepLayer.run(input) { half in

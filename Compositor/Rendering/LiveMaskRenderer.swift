@@ -38,7 +38,7 @@ nonisolated final class LiveMaskRenderer {
         guard let settings = adjustment(id), let original = context.makeImage() else { return }
         let region = adjustmentRegion?(bounds) ?? bounds, scale = adjustmentScale
         let deep = sixteenBit && original.bitsPerComponent == 16
-        guard var adjusted = try? deep ? DeepLayer.run(original, through: { try settings.apply($0, region: region, scale: scale) })
+        guard var adjusted = try? deep ? settings.applySixteenBit(original, region: region, scale: scale)
                                        : settings.apply(original, region: region, scale: scale) else { return }
         // In a blend mode the adjustment blends at 8 bits.
         if blendMode(id) != .normal {
