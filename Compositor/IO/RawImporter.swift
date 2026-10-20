@@ -105,7 +105,7 @@ nonisolated enum RawImporter {
         var settings = RawDevelopSettings(temperature: filter.neutralTemperature, tint: filter.neutralTint)
         settings.noiseReduction = filter.isLuminanceNoiseReductionSupported ? filter.luminanceNoiseReductionAmount : 0
         settings.lensCorrection = filter.isLensCorrectionSupported && filter.isLensCorrectionEnabled
-        settings.highlightRecovery = filter.isHighlightRecoverySupported && filter.isHighlightRecoveryEnabled
+        settings.highlightRecovery = Self.highlightRecovery(of: filter)
         settings.asShotTemperature = settings.temperature
         settings.asShotTint = settings.tint
         settings.asShotNoiseReduction = settings.noiseReduction
@@ -113,8 +113,20 @@ nonisolated enum RawImporter {
         settings.asShotHighlightRecovery = settings.highlightRecovery
         settings.supportsNoiseReduction = filter.isLuminanceNoiseReductionSupported
         settings.supportsLensCorrection = filter.isLensCorrectionSupported
-        settings.supportsHighlightRecovery = filter.isHighlightRecoverySupported
+        settings.supportsHighlightRecovery = Self.supportsHighlightRecovery(filter)
         return settings
+    }
+
+    /// Highlight Recovery joined `CIRAWFilter` in macOS 26. Before that there is no way to ask for it, so the
+    /// control stays off and the sheet disables it: the camera's clipped highlights are left as they are.
+    private static func supportsHighlightRecovery(_ filter: CIRAWFilter) -> Bool {
+        guard #available(macOS 26.0, *) else { return false }
+        return filter.isHighlightRecoverySupported
+    }
+
+    private static func highlightRecovery(of filter: CIRAWFilter) -> Bool {
+        guard #available(macOS 26.0, *) else { return false }
+        return filter.isHighlightRecoverySupported && filter.isHighlightRecoveryEnabled
     }
 
     /// The developed image. `limit` caps the long edge for the preview the sheet shows while the
@@ -141,7 +153,9 @@ nonisolated enum RawImporter {
         filter.boostAmount = settings.boost
         if settings.supportsNoiseReduction { filter.luminanceNoiseReductionAmount = settings.noiseReduction }
         if settings.supportsLensCorrection { filter.isLensCorrectionEnabled = settings.lensCorrection }
-        if settings.supportsHighlightRecovery { filter.isHighlightRecoveryEnabled = settings.highlightRecovery }
+        if settings.supportsHighlightRecovery, #available(macOS 26.0, *) {
+            filter.isHighlightRecoveryEnabled = settings.highlightRecovery
+        }
         guard let output = filter.outputImage else { return nil }
         return dithered(output, context: context)
     }
