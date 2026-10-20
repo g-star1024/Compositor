@@ -165,7 +165,7 @@ struct ShapeToolTests {
         let decoded = try JSONDecoder().decode(LayerShapeStyle.self, from: JSONEncoder().encode(oldStyle))
         #expect(decoded.smoothing == nil, "older shapes keep their circular corners")
         var older = snapshot.manifest
-        older.version = 13
+        older.version = 11
         await #expect(throws: (any Error).self) {
             try await ProjectStore.shared.save(ProjectSnapshot(manifest: older, images: snapshot.images), to: url)
         }
