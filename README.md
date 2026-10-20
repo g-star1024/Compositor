@@ -27,7 +27,10 @@ Feature parity with upstream v1.4.9 – v1.5.3, on top of v1.6.0. Formats and co
 - **RAW develop: Lens Correction and Highlight Recovery** alongside Noise Reduction. Highlight Recovery needs macOS 26; on macOS 14–15 the control stays off and disabled.
 - **Gaussian Blur: Preserve Transparency**, solid edges at the canvas bounds, 5 px to start.
 - **Smooth rectangle corners**: Figma-style 60% smoothing (the iOS squircle match), with a simplified shape controls bar.
-- **Camera Raw**: Light and Color sliders now match Photoshop's Camera Raw Filter.
+- **Camera Raw matches Photoshop's Camera Raw Filter** far more closely: adaptive Contrast, Highlights and Shadows that respond to the picture, Dehaze, Texture, Clarity and Sharpening tuned to Photoshop, a Color Mixer, Calibration, the tone curve, vignettes and Color Grading measured at Photoshop's real blending across all four wheels.
+- **Reset a Camera Raw section from its header**; the reset control appears alongside the section's eye icon, and the scrollbar no longer sits over the controls.
+- **Camera Raw previews are 5 to 20 times faster**: the lookup tables shrank from 3.2 MB to 1.25 MB, large previews use a verified Metal path, and scope sampling is reduced.
+- **Spot Healing and Content-Aware Fill rebuilt** on multi-scale PatchMatch, which carries busy texture to the edge of what it fills.
 - **Layer effects and live text survive** canvas size changes and adjustments instead of being flattened.
 
 Workflow:
@@ -37,9 +40,9 @@ Workflow:
 - **Tabs**: the blank start tab stays put, and Untitled numbers stay low.
 - **Drop anywhere on the tab bar** to open in a new project; a layer dragged into a new project sizes the canvas to it; **paste an image on the New canvas screen** to make the canvas.
 - **Layers panel**: adjustment layer button before layer effects; the panel at its narrowest keeps everything inside it.
-- **Update alert lists what's new** in the same compact dialog.
+- **Update alert lists what's new** in the same compact dialog, and shows every time in the wide layout.
 
-- **zh-Hans**: 16 new strings translated (catalog now 473 keys).
+- **zh-Hans**: 73 new strings translated (catalog now 530 keys).
 
 ## What's new in v1.6.0
 
