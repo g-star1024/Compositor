@@ -57,20 +57,19 @@ struct SelectionClipboardTests {
         return try #require(NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]))
     }
 
-    /// Cmd-V on the New canvas screen with an image on the clipboard makes a canvas its size with it in it; a 16-bit one
-    /// comes in as a 16-bit layer, as importing it would.
-    @Test(arguments: [8, 16])
-    func pastingAnImageOnTheNewCanvasScreenMakesTheCanvas(bits: Int) async throws {
+    /// Cmd-V on the New canvas screen with an image on the clipboard makes a canvas its size with it in it.
+    /// This fork has no 16-bit layers yet, so the case upstream parameterizes over is covered at 8 bits only.
+    @Test
+    func pastingAnImageOnTheNewCanvasScreenMakesTheCanvas() async throws {
         let session = EditorSession()
         let pasteboard = EditorSession.pasteboard
         pasteboard.clearContents()
-        pasteboard.setData(try png(width: 320, height: 200, bits: bits), forType: .png)
+        pasteboard.setData(try png(width: 320, height: 200, bits: 8), forType: .png)
         #expect(session.document == nil && session.canPasteImageAsNewCanvas)
         await session.pasteImageAsNewCanvas()
         let document = try #require(session.document, "a canvas")
         #expect(document.width == 320 && document.height == 200)
         #expect(document.layers.count == 1 && document.layers.first?.size == CGSize(width: 320, height: 200))
-        #expect((document.layers.first?.asset?.deep != nil) == (bits == 16))
         #expect(session.canPasteImageAsNewCanvas == false, "with a canvas, Paste pastes into it")
     }
 
