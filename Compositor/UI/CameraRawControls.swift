@@ -136,17 +136,46 @@ struct CameraRawControls: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel(section.rawValue)
                 Spacer(minLength: 0)
-                if section == .light, raw.adjustsLight { eye(shown: session.filterEdit?.showsCameraRawLight ?? true, name: "Light", group: .light) }
-                if section == .color, raw.adjustsColor { eye(shown: session.filterEdit?.showsCameraRawColor ?? true, name: "Color", group: .color) }
-                if section == .effects, raw.adjustsEffects { eye(shown: session.filterEdit?.showsCameraRawEffects ?? true, name: "Effects", group: .effects) }
-                if section == .curve, raw.adjustsCurve { eye(shown: session.filterEdit?.showsCameraRawCurve ?? true, name: "Curve", group: .curve) }
-                if section == .colorMixer, raw.adjustsMixer { eye(shown: session.filterEdit?.showsCameraRawMixer ?? true, name: "Color Mixer", group: .mixer) }
-                if section == .colorGrading, raw.adjustsGrading { eye(shown: session.filterEdit?.showsCameraRawGrading ?? true, name: "Color Grading", group: .grading) }
-                if section == .detail, raw.adjustsDetail { eye(shown: session.filterEdit?.showsCameraRawDetail ?? true, name: "Detail", group: .detail) }
-                if section == .optics, raw.adjustsOptics { eye(shown: session.filterEdit?.showsCameraRawOptics ?? true, name: "Optics", group: .optics) }
-                if section == .geometry, raw.adjustsGeometry { eye(shown: session.filterEdit?.showsCameraRawGeometry ?? true, name: "Geometry", group: .geometry) }
-                if section == .calibration, raw.adjustsCalibration { eye(shown: session.filterEdit?.showsCameraRawCalibration ?? true, name: "Calibration", group: .calibration) }
-                resetButton(section.group)
+                if section == .light, raw.adjustsLight {
+                    eye(shown: session.filterEdit?.showsCameraRawLight ?? true, name: "Light", group: .light)
+                    resetButton(section.group)
+                }
+                if section == .color, raw.adjustsColor {
+                    eye(shown: session.filterEdit?.showsCameraRawColor ?? true, name: "Color", group: .color)
+                    resetButton(section.group)
+                }
+                if section == .effects, raw.adjustsEffects {
+                    eye(shown: session.filterEdit?.showsCameraRawEffects ?? true, name: "Effects", group: .effects)
+                    resetButton(section.group)
+                }
+                if section == .curve, raw.adjustsCurve {
+                    eye(shown: session.filterEdit?.showsCameraRawCurve ?? true, name: "Curve", group: .curve)
+                    resetButton(section.group)
+                }
+                if section == .colorMixer, raw.adjustsMixer {
+                    eye(shown: session.filterEdit?.showsCameraRawMixer ?? true, name: "Color Mixer", group: .mixer)
+                    resetButton(section.group)
+                }
+                if section == .colorGrading, raw.adjustsGrading {
+                    eye(shown: session.filterEdit?.showsCameraRawGrading ?? true, name: "Color Grading", group: .grading)
+                    resetButton(section.group)
+                }
+                if section == .detail, raw.adjustsDetail {
+                    eye(shown: session.filterEdit?.showsCameraRawDetail ?? true, name: "Detail", group: .detail)
+                    resetButton(section.group)
+                }
+                if section == .optics, raw.adjustsOptics {
+                    eye(shown: session.filterEdit?.showsCameraRawOptics ?? true, name: "Optics", group: .optics)
+                    resetButton(section.group)
+                }
+                if section == .geometry, raw.adjustsGeometry {
+                    eye(shown: session.filterEdit?.showsCameraRawGeometry ?? true, name: "Geometry", group: .geometry)
+                    resetButton(section.group)
+                }
+                if section == .calibration, raw.adjustsCalibration {
+                    eye(shown: session.filterEdit?.showsCameraRawCalibration ?? true, name: "Calibration", group: .calibration)
+                    resetButton(section.group)
+                }
             }
             if expanded.contains(section) {
                 switch section {
@@ -293,15 +322,14 @@ struct CameraRawControls: View {
         .accessibilityLabel(shown ? "Hide \(name)" : "Show \(name)")
     }
 
-    /// Puts the section back to its defaults. Dimmed while there's nothing to put back.
+    /// Puts an adjusted section back to its defaults.
     private func resetButton(_ group: CameraRawGroup) -> some View {
-        let isDefault = raw.isDefault(group)
-        return Button { session.resetCameraRaw(group) } label: {
+        Button { session.resetCameraRaw(group) } label: {
             Image(systemName: "arrow.counterclockwise")
         }
         .buttonStyle(.borderless)
-        .disabled(isDefault || session.filterEdit?.committing == true)
-        .help(isDefault ? "\(group.rawValue) is at its defaults" : "Reset \(group.rawValue) to its defaults")
+        .disabled(session.filterEdit?.committing == true)
+        .help("Reset \(group.rawValue) to its defaults")
         .accessibilityLabel("Reset \(group.rawValue)")
     }
 
