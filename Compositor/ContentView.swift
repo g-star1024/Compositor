@@ -118,7 +118,8 @@ struct ContentView: View {
                 }
                 if !session.canvasOnly {
                     PanelResizeEdge(width: $layersPanelWidth, range: LayersPanel.widths)
-                    LayersPanel(session: session, width: layersPanelWidth)
+                    // Clamped: a width saved when the panel could go narrower is brought into range.
+                    LayersPanel(session: session, width: min(LayersPanel.widths.upperBound, max(LayersPanel.widths.lowerBound, layersPanelWidth)))
                 }
             }
             if !session.canvasOnly {
