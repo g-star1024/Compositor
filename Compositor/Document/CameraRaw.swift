@@ -206,7 +206,7 @@ nonisolated struct CameraRawSettings: Equatable, Sendable {
     /// `brightness` is what the adaptive sliders read from the picture, when it's known already (a preview's source,
     /// measured once for the session); nil measures it here.
     func apply(_ image: CGImage, clipping: CameraRawClipping? = nil, scale: CGFloat = 1, seed: UInt32 = 0, visualizePointColor: Int = -1,
-               sharpenMask: Bool = false, brightness known: CameraRawTables.Brightness? = nil) throws -> CGImage {
+               sharpenMask: Bool = false, brightness known: CameraRawTables.Brightness? = nil, usesGPU: Bool = false) throws -> CGImage {
         let settings = normalized
         if settings.isIdentity && clipping == nil && visualizePointColor < 0 && !sharpenMask { return image }
         guard settings.isValid else { throw ProjectError.invalid }
@@ -224,6 +224,12 @@ nonisolated struct CameraRawSettings: Equatable, Sendable {
         if clipping == nil && !sharpenMask && visualizePointColor < 0 && settings.adjustsGeometry {
             source = try settings.geometry.apply(source)
         }
+        func applyTable(_ table: [Float]?, pixels: UnsafeMutablePointer<UInt8>, width: Int, height: Int, stride: Int, clipping: Int32) {
+            if usesGPU, clipping == 0, let table,
+               MetalCameraRawLookup.shared?.apply(pixels, width: width, height: height, rowBytes: stride,
+                                                 table: table, grid: CameraRawTables.grid) == true { return }
+            adjust_camera_raw(pixels, width, height, stride, table, Int32(CameraRawTables.grid), clipping)
+        }
         return try ImageAdjustmentPixels.run(source) { pixels, width, height, stride in
             let adaptive = settings.contrast != 0 || settings.highlights != 0
             let brightness = adaptive
@@ -236,7 +242,7 @@ nonisolated struct CameraRawSettings: Equatable, Sendable {
             let shadows = settings.shadows != 0 && CameraRawShadows.tables != nil
             if shadows {
                 if let before = CameraRawTables.compose(CameraRawTables.stages(for: settings, brightness: brightness, part: .beforeShadows)) {
-                    adjust_camera_raw(pixels, width, height, stride, before, Int32(CameraRawTables.grid), 0)
+                    applyTable(before, pixels: pixels, width: width, height: height, stride: stride, clipping: 0)
                 }
                 CameraRawShadows.apply(settings.shadows, pixels: pixels, width: width, height: height, stride: stride, scale: pixelScale)
             }
@@ -244,7 +250,7 @@ nonisolated struct CameraRawSettings: Equatable, Sendable {
                                                                        part: shadows ? .afterShadows : nil))
             if foldsColor && colorAdjusts { table = settings.foldingColor(into: table) }
             if table != nil || clipping != nil {
-                adjust_camera_raw(pixels, width, height, stride, table, Int32(CameraRawTables.grid), mode)
+                applyTable(table, pixels: pixels, width: width, height: height, stride: stride, clipping: Int32(mode))
             }
             if paintColor { settings.applyCurveColor(pixels, width: width, height: height, stride: stride, visualize: visualizePointColor) }
             if paintEffects {

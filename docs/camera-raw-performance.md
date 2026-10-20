@@ -67,3 +67,63 @@ All original trials are retained in [camera-raw-scope-sampling.json](benchmarks/
 - `/tmp/compositor-scope-after.json`: new sampling, measured after the edit.
 - `/tmp/compositor-scope-paired.json`: alternating original/new sampling within one process.
 - `/tmp/CompositorScopeBenchmarkBefore.log`, `/tmp/CompositorScopeBenchmarkAfter.log`, `/tmp/CompositorScopeBenchmarkPaired.log`: Xcode run logs.
+
+
+## Metal composed color lookup
+
+The first GPU stage accelerates the existing combined 33³ color lookup in large-image Camera Raw previews. It uses the CPU-composed table unchanged, including measured white balance, Light, curves, mixer, grading and calibration stages when they are folded into that table. The same stage can run before or after Shadows; every other effect remains in its original order on the CPU. This is a staged migration, not a replacement of the entire Camera Raw pipeline.
+
+The shader disables fast math, selects lattice cells with integer arithmetic, and preserves premultiplied RGBA and row padding. Pixels within 0.01 of an 8-bit rounding boundary are resolved by the original double-precision C lookup. This avoids allowing a tiny interpolation difference to propagate through downstream effects. The unchanged CPU renderer remains the reference and the OK/export path. Unsupported tables, unavailable Metal, failed allocations and failed GPU commands fall back to that renderer without modifying the input.
+
+The GPU edits one shared pixel buffer in place. Pixel, uncertainty and lookup buffers are reused under a lock during a drag and released on a worker when Camera Raw closes. The pipeline is warmed in the background on opening an eligible filter. The automatic path uses CPU processing through 8 megapixels; explicit benchmarks also measure smaller GPU jobs to identify overhead. Neither path reduces preview resolution.
+
+Accuracy checks cover all 16,777,216 opaque RGB colors for five table profiles (identity, white balance, Light, extreme settings, and combined curve/mixer/grading), all alpha values with padded rows, a discontinuous randomized lookup table, mixed spatial effects, clipping views, HDR normalization, and preview versus CPU apply. Those comparisons require byte-for-byte agreement. They are extensive reference tests on this machine, not an exhaustive proof over every possible setting combination and GPU driver.
+
+### GPU latency measurements
+
+All values below are medians from the final pooled-buffer implementation on the same 10-core Apple-silicon Mac as the scope benchmark.
+
+| Image / settings | CPU preview | GPU preview | Render time reduction |
+| --- | ---: | ---: | ---: |
+| 2 MP / Temperature | 7.04 ms | 6.42 ms | 8.8% |
+| 2 MP / Light | 11.89 ms | 11.55 ms | 2.8% |
+| 6 MP / Temperature | 17.67 ms | 14.14 ms | 20.0% |
+| 6 MP / Light | 22.74 ms | 17.91 ms | 21.3% |
+| 12 MP / Temperature | 35.34 ms | 25.08 ms | 29.0% |
+| 12 MP / Light | 40.53 ms | 32.00 ms | 21.0% |
+| 24 MP / Temperature | 69.58 ms | 44.62 ms | 35.9% |
+| 24 MP / Light | 75.89 ms | 52.32 ms | 31.1% |
+| 24 MP / Light + Shadows + Clarity | 562.52 ms | 531.01 ms | 5.6% |
+| 48 MP / Temperature | 148.54 ms | 80.41 ms | 45.9% |
+| 48 MP / Light | 151.89 ms | 85.76 ms | 43.5% |
+
+Temperature uses Temperature +35 and Tint −12. Light adds Exposure +0.5, Contrast +15 and Highlights −20. The heavier case adds Shadows +25 and Clarity +15. Smaller jobs are forced onto Metal only for benchmarking; the app retains the conservative CPU cutoff through 8 MP.
+
+| Image | CPU lookup | GPU lookup, transfers and repair |
+| --- | ---: | ---: |
+| 2 MP | 4.25 ms | 2.67 ms |
+| 6 MP | 12.94 ms | 7.59 ms |
+| 12 MP | 26.49 ms | 14.61 ms |
+| 24 MP | 55.39 ms | 26.25 ms |
+| 48 MP | 118.72 ms | 48.18 ms |
+
+This first GPU stage saves approximately 25 ms on the 24 MP Temperature fixture and 68 ms on the 48 MP fixture. Full Light previews improve by 31–44% at 24–48 MP. Shadows and Clarity remain CPU-bound: the heavy case improves by 5.6%, not by the lookup-only speedup.
+
+Timings still vary. The 24 MP heavy GPU trials span 518.75–755.21 ms; the median is 531.01 ms. The 48 MP Temperature GPU trials span 72.37–95.53 ms. These warmed synthetic-image measurements are not a universal frame-rate or input-to-screen guarantee.
+
+Raw final samples are retained in [camera-raw-gpu.json](benchmarks/camera-raw-gpu.json). Initial allocation-heavy trials were used to identify and remove the extra full-image buffer and per-frame allocation overhead; they are not the final numbers reported here.
+
+The paired benchmark uses the same generated fixtures, new 4th/8th-pixel scope sampling on both paths, cached brightness and native image resolution. Two warm-ups per backend precede 11 alternating CPU/GPU pairs. Full-preview measurements include bitmap preparation, table construction, lookup, downstream effects, histogram/vectorscope generation, GPU transfers, synchronization and CPU rounding repair. They exclude UI event queueing and presentation. Lookup-only measurements include the GPU transfers and repair but exclude the common input reset. The first allocation and shader compilation are excluded by warm-up.
+
+Run the opt-in benchmark alone:
+
+```sh
+TEST_RUNNER_CAMERA_RAW_GPU_BENCHMARK=1 xcodebuild \
+  -project Compositor.xcodeproj -scheme Compositor -configuration Release \
+  -destination 'platform=macOS' -derivedDataPath /tmp/CompositorScopeBenchmarkBuild \
+  CODE_SIGNING_ALLOWED=NO ENABLE_TESTABILITY=YES \
+  -enableCodeCoverage NO -parallel-testing-enabled NO \
+  -only-testing:CompositorTests/CameraRawGPUPerformanceTests test
+```
+
+The benchmark writes `/tmp/compositor-camera-raw-gpu.json`. Ordinary unit runs do no timing work unless the benchmark environment variable is set. Exact parity tests are in `CameraRawGPUTests`; they are enabled when a Metal device exists, and still fail if the shader cannot compile on that device.

@@ -159,6 +159,8 @@ nonisolated struct FilterJob: @unchecked Sendable {
     var showsHighlightClipping = false
     /// What Camera Raw's adaptive sliders read from `image`, when known already: measured once for a session's previews.
     var cameraRawBrightness: CameraRawTables.Brightness? = nil
+    /// Preview only: the CPU remains the reference for OK, export, and unsupported GPU paths.
+    var cameraRawUsesGPU = false
     /// Point-color range preview. −1 leaves the grade alone.
     var visualizesPointColor = -1
     /// Option-drag on Sharpening Masking. Preview only.
@@ -226,7 +228,7 @@ nonisolated enum PixelFilter {
         case .colorBalance: image = try settings.colorBalance.apply(job.image)
         case .cameraRaw: image = try settings.cameraRaw.apply(job.image, clipping: job.cameraRawClipping, scale: job.scale, seed: job.seed,
                                                                 visualizePointColor: job.visualizesPointColor, sharpenMask: job.showsSharpenMask,
-                                                                brightness: job.cameraRawBrightness)
+                                                                brightness: job.cameraRawBrightness, usesGPU: job.cameraRawUsesGPU)
         // Grain sits in layer pixels; the job's seed gives each application its own pattern.
         case .grain: image = try settings.grain.apply(job.image, unitsPerPixel: 1 / job.scale, seed: job.seed)
         case .dither: image = try settings.dither.apply(job.image)
@@ -547,7 +549,10 @@ final class FilterEdit {
         job.showsHighlightClipping = showsHighlightClipping
         job.visualizesPointColor = pointColorVisualizeIndex
         job.showsSharpenMask = cameraRawSharpenMask
-        if kind == .cameraRaw { job.cameraRawBrightness = previewBrightness }
+        if kind == .cameraRaw {
+            job.cameraRawBrightness = previewBrightness
+            job.cameraRawUsesGPU = previewSource.width * previewSource.height >= MetalCameraRawLookup.minimumPixels
+        }
         return job
     }
 }
@@ -592,6 +597,9 @@ extension EditorSession {
             edit.startedEmpty = startedEmpty
             edit.repeating = repeating
             filterEdit = edit
+            if kind == .cameraRaw, edit.previewSource.width * edit.previewSource.height >= MetalCameraRawLookup.minimumPixels {
+                Task.detached(priority: .utility) { _ = MetalCameraRawLookup.shared }
+            }
             // An automatic filter commits what its preview made, so it still needs one.
             updateFilter(edit.settings, preview: !repeating || kind.isAutomatic)
         } catch { brushError = error.localizedDescription }
@@ -653,7 +661,10 @@ extension EditorSession {
                     return (nil, nil, error.localizedDescription)
                 }
             }.value
-            guard let self, let edit, self.filterEdit === edit, !Task.isCancelled else { return }
+            guard let self, let edit, self.filterEdit === edit, !Task.isCancelled else {
+                if job.cameraRawUsesGPU { Task.detached(priority: .utility) { MetalCameraRawLookup.shared?.discardBuffers() } }
+                return
+            }
             edit.previewTask = nil
             edit.preparing = false
             // Made before the layer grew for a bigger blur: it still shows, in the place it was made for, until the
@@ -679,6 +690,9 @@ extension EditorSession {
         if finishAdjustmentEditing(commit: false) { return }
         guard let edit = filterEdit, !edit.committing else { return }
         edit.previewTask?.cancel()
+        if edit.kind == .cameraRaw, edit.previewJob.cameraRawUsesGPU {
+            Task.detached(priority: .utility) { MetalCameraRawLookup.shared?.discardBuffers() }
+        }
         filterEdit = nil
         brushRevision += 1
     }
@@ -713,7 +727,12 @@ extension EditorSession {
         if edit.kind.repeatsAsLastFilter { lastFilter = edit.kind }
         isProjectBusy = true
         // The preview stays up until the result is on the layer, so the canvas never flashes the original.
-        defer { filterEdit = nil; isProjectBusy = false; brushRevision += 1 }
+        defer {
+            filterEdit = nil; isProjectBusy = false; brushRevision += 1
+            if edit.kind == .cameraRaw, edit.previewJob.cameraRawUsesGPU {
+                Task.detached(priority: .utility) { MetalCameraRawLookup.shared?.discardBuffers() }
+            }
+        }
         // Remove Background masks the background out rather than erasing it, so it can be brought back at any time
         // by painting the mask, disabling it, or deleting it.
         if edit.kind == .removeBackground { await commitBackgroundMask(edit); return }
