@@ -49,4 +49,49 @@ struct MiddleButtonTests {
         #expect(session.viewport.zoom == zoom)
         #expect(session.viewport.pan != pan)
     }
+
+    @Test(arguments: [3, 30])
+    func middleDraggingScrollsOnlyTheLayerList(_ count: Int) throws {
+        let session = EditorSession()
+        session.createDocument(width: 100, height: 80, emptyLayer: true)
+        for _ in 1..<count { session.addBlankLayer() }
+        let coordinator = NativeLayerList.Coordinator(session: session)
+        let table = LayerTableView()
+        table.session = session
+        table.headerView = nil
+        table.rowHeight = 52
+        table.addTableColumn(NSTableColumn(identifier: NSUserInterfaceItemIdentifier("layer")))
+        table.delegate = coordinator
+        table.dataSource = coordinator
+        let scroll = NSScrollView(frame: CGRect(x: 0, y: 0, width: 252, height: 400))
+        scroll.documentView = table
+        let window = NSWindow(contentRect: scroll.frame, styleMask: [.titled], backing: .buffered, defer: false)
+        window.contentView = scroll
+        defer { window.orderOut(nil) }
+        coordinator.update(table)
+        scroll.layoutSubtreeIfNeeded()
+        scroll.contentView.scroll(to: .zero)
+        let selection = session.selectedLayerIDs
+        let rows = table.selectedRowIndexes
+        let history = session.history.undoCount
+        let pan = session.viewport.pan
+        let maximum = max(0, table.bounds.height - scroll.contentView.bounds.height)
+        #expect((maximum > 0) == (count == 30))
+        table.otherMouseDown(with: try event(.otherMouseDown, rise: 0))
+        table.otherMouseDragged(with: try event(.otherMouseDragged, rise: 100))
+        #expect(abs(scroll.contentView.bounds.minY - min(100, maximum)) < 0.01)
+        table.otherMouseDragged(with: try event(.otherMouseDragged, rise: 10000))
+        #expect(abs(scroll.contentView.bounds.minY - maximum) < 0.01)
+        table.otherMouseDragged(with: try event(.otherMouseDragged, rise: 9960))
+        #expect(abs(scroll.contentView.bounds.minY - max(0, maximum - 40)) < 0.01)
+        table.otherMouseDragged(with: try event(.otherMouseDragged, rise: -10000))
+        #expect(abs(scroll.contentView.bounds.minY) < 0.01)
+        table.otherMouseUp(with: try event(.otherMouseUp, rise: -10000))
+        // Dragging after release has no effect.
+        table.otherMouseDragged(with: try event(.otherMouseDragged, rise: 100))
+        #expect(abs(scroll.contentView.bounds.minY) < 0.01)
+        #expect(session.selectedLayerIDs == selection && table.selectedRowIndexes == rows)
+        #expect(session.history.undoCount == history && session.viewport.pan == pan)
+    }
+
 }
