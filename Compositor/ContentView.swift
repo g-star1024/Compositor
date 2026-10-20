@@ -287,8 +287,9 @@ struct ContentView: View {
         .onChange(of: session.document == nil) { _, empty in
             if !empty { session.canvasFocusRequest += 1 }
         }
+        // A folder brings in the images directly inside it.
         .fileImporter(isPresented: $session.showsImporter,
-                      allowedContentTypes: UTType.importableImages, allowsMultipleSelection: true) { result in
+                      allowedContentTypes: UTType.importableImages + [.folder], allowsMultipleSelection: true) { result in
             switch result {
             case .success(let urls): Task { await session.importImages(urls) }
             case .failure(let error):
