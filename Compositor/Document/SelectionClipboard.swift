@@ -1,4 +1,5 @@
 import AppKit
+import UniformTypeIdentifiers
 
 /// Pixels copied from the canvas, with where they came from so Paste can put them back in place.
 struct PixelClipboard {
@@ -159,6 +160,41 @@ extension EditorSession {
                                  y: floor((document.size.height - CGFloat(image.height)) / 2))
             addPixelLayer(image, at: origin, name: nextLayerName(), editName: "Paste")
         } else { NSSound.beep() }
+    }
+
+    /// Cmd-V on the New canvas screen with an image on the clipboard rather than a size copied as text: a canvas the
+    /// image's size, with the image in it, as importing the image makes. Files copied in the Finder come in themselves
+    /// (the clipboard also holds their icon, as an image).
+    var canPasteImageAsNewCanvas: Bool {
+        guard document == nil, !isProjectBusy, !isImporting else { return false }
+        let pasteboard = Self.pasteboard
+        if let text = pasteboard.string(forType: .string), CanvasDocument.validDimension(text) != nil { return false }
+        return !copiedImageFiles(pasteboard).isEmpty || pasteboard.availableType(from: [.png, .tiff]) != nil
+    }
+
+    func pasteImageAsNewCanvas() async {
+        guard canPasteImageAsNewCanvas else { return }
+        let pasteboard = Self.pasteboard
+        let files = copiedImageFiles(pasteboard)
+        if !files.isEmpty { await importImages(files); return }
+        // Image data alone: through a file, so it's read as any imported image is (16 bits kept, color converted).
+        guard let type = pasteboard.availableType(from: [.png, .tiff]), let data = pasteboard.data(forType: type) else { return }
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let file = folder.appendingPathComponent("Pasted Image").appendingPathExtension(type == .png ? "png" : "tiff")
+        do {
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            try data.write(to: file)
+        } catch { importError = error.localizedDescription; return }
+        await importImages([file])
+    }
+
+    /// Image files copied in the Finder.
+    private func copiedImageFiles(_ pasteboard: NSPasteboard) -> [URL] {
+        let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
+        return urls.filter { url in
+            UTType(filenameExtension: url.pathExtension).map { $0.conforms(to: .image) || url.pathExtension.lowercased() == "psd" } ?? false
+        }
     }
 
     /// Cmd-J (Layer via Copy): the selection's pixels become a new layer in place; with no
