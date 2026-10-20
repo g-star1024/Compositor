@@ -243,6 +243,17 @@
         }
       }
     },
+    "Automatically download and install updates in the future": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "以后自动下载并安装更新"
+          }
+        }
+      }
+    },
     "Background for transparency": {
       "extractionState": "manual",
       "localizations": {
@@ -338,6 +349,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "将线条拆分为发光珠点"
+          }
+        }
+      }
+    },
+    "Brings back detail in bright areas the camera partly clipped": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "找回相机部分过曝亮部的细节"
           }
         }
       }
@@ -613,6 +635,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "点击添加点。拖拽调整。"
+          }
+        }
+      }
+    },
+    "Close %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关闭 %@"
           }
         }
       }
@@ -1849,6 +1882,17 @@
         }
       }
     },
+    "Highlight Recovery": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "高光恢复"
+          }
+        }
+      }
+    },
     "Highlights": {
       "extractionState": "manual",
       "localizations": {
@@ -2135,6 +2179,28 @@
         }
       }
     },
+    "Install Update": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "安装更新"
+          }
+        }
+      }
+    },
+    "Install and Relaunch": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "安装并重新启动"
+          }
+        }
+      }
+    },
     "Inverse": {
       "extractionState": "manual",
       "localizations": {
@@ -2252,6 +2318,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "左"
+          }
+        }
+      }
+    },
+    "Lens Correction": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "镜头校正"
           }
         }
       }
@@ -2773,6 +2850,17 @@
         }
       }
     },
+    "Not available for this camera": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此相机不适用"
+          }
+        }
+      }
+    },
     "OK": {
       "extractionState": "manual",
       "localizations": {
@@ -2960,6 +3048,17 @@
         }
       }
     },
+    "Pasted Image": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "粘贴的图像"
+          }
+        }
+      }
+    },
     "Perspective allows stronger keystone. Rectilinear keeps the warp gentler.": {
       "extractionState": "manual",
       "localizations": {
@@ -3033,6 +3132,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "保留亮度"
+          }
+        }
+      }
+    },
+    "Preserve Transparency": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保留透明度"
           }
         }
       }
@@ -3330,6 +3440,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "相对于当前尺寸"
+          }
+        }
+      }
+    },
+    "Remind Me Later": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "稍后提醒"
           }
         }
       }
@@ -3840,6 +3961,17 @@
         }
       }
     },
+    "Skip This Version": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "跳过此版本"
+          }
+        }
+      }
+    },
     "Smoothing": {
       "extractionState": "manual",
       "localizations": {
@@ -4060,6 +4192,17 @@
         }
       }
     },
+    "This file has no lens profile": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此文件没有镜头配置文件"
+          }
+        }
+      }
+    },
     "Three-Way shows shadows, midtones, and highlights. The other choices show one wheel.": {
       "extractionState": "manual",
       "localizations": {
@@ -4221,6 +4364,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "未保存的更改"
+          }
+        }
+      }
+    },
+    "Untitled N": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未命名 N"
           }
         }
       }
