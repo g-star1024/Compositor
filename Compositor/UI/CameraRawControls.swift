@@ -21,7 +21,9 @@ struct CameraRawControls: View {
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.trailing, 20)
             }
+            .padding(.trailing, -20)
             .frame(maxHeight: .infinity)
         }
         .frame(maxHeight: .infinity, alignment: .top)
