@@ -23,7 +23,7 @@
 // Patch radius (7 × 7), and the channels a pixel carries: color (RGBA) and its texture across and down.
 enum { R = 3, CH = 6 };
 // How much texture counts against color.
-static const float TEXTURE_WEIGHT = 1.5f;
+static const float TEXTURE_WEIGHT = 6.0f;
 // How strongly the last blend favors the best matches (see `vote`).
 static const float SHARP_FINISH = 8.0f;
 
@@ -365,9 +365,9 @@ static int downsample(const Level *F, Level *C) {
             for (int c = 0; c < CH; ++c) C->color[(size_t)p * CH + c] = known ? sure[c] / known : all[c] / present;
         }
     }
-    if (!level_classify(C)) return 0;
-    measure_texture(C);
-    return 1;
+    // Texture stays as measured at full size, averaged down, rather than measured again here: shrunk, busy texture
+    // blurs to a plain mid-tone, which would match the plainest parts of the image and fill the hole flat.
+    return level_classify(C);
 }
 
 // The coarsest hole's first guess: filled in from its edge inward, each pixel the average of the filled
