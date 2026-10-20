@@ -56,7 +56,10 @@ struct ShapeControls: View {
                 Toggle("Smooth Corners", isOn: $session.shapeSmoothing)
                     .toggleStyle(.checkbox)
                     .fixedSize()
-                    .help("Use smooth squircle corners at 60% smoothing, matching Figma's iOS setting; requires a corner radius")
+                    .disabled(session.shapeCornerRadius <= 0)
+                    .help(session.shapeCornerRadius <= 0
+                          ? "Set a radius above 0 to use smooth corners."
+                          : "Use smooth squircle corners at 60% smoothing, matching Figma's iOS setting")
             }
             Spacer(minLength: 0)
         }
