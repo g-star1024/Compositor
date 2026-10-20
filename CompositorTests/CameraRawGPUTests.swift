@@ -175,26 +175,29 @@ struct CameraRawGPUTests {
         small.cancelFilter()
     }
 
-    @Test func hdrPreviewKeepsTheExistingNormalizationAndPixels() throws {
+    /// The GPU preview has to land on the same bytes as the CPU preview, through the same path a slider
+    /// drag takes. Upstream grades an HDR layer here; this fork has not adopted HDR, so the same
+    /// comparison runs on 8-bit pixels.
+    @Test func gpuPreviewKeepsTheExistingPixels() throws {
         _ = try #require(MetalCameraRawLookup.shared)
         let width = 1024, height = 1024
-        let context = try DeepLayer.context(width: width, height: height, hdr: true)
-        let pixels = try #require(context.data).assumingMemoryBound(to: Float16.self)
+        let context = try BrushRaster.context(width: width, height: height, mask: false)
+        let pixels = try #require(context.data).assumingMemoryBound(to: UInt8.self)
         for index in 0..<(width * height) {
-            pixels[index * 4] = Float16(Float(index % 1024) / 256)
-            pixels[index * 4 + 1] = Float16(Float(index % 512) / 256)
-            pixels[index * 4 + 2] = Float16(0.3)
-            pixels[index * 4 + 3] = 1
+            pixels[index * 4] = UInt8(index % 256)
+            pixels[index * 4 + 1] = UInt8((index / 256) % 256)
+            pixels[index * 4 + 2] = 77
+            pixels[index * 4 + 3] = 255
         }
-        let hdr = try #require(context.makeImage())
+        let image = try #require(context.makeImage())
         var settings = FilterSettings()
         settings.cameraRaw = profiles()[2]
-        var cpu = FilterJob(kind: .cameraRaw, image: hdr, settings: settings, scale: 1, selection: nil, mapping: .identity)
+        var cpu = FilterJob(kind: .cameraRaw, image: image, settings: settings, scale: 1, selection: nil, mapping: .identity)
         cpu.cameraRawUsesGPU = false
         var gpu = cpu
         gpu.cameraRawUsesGPU = true
-        let reference = try PixelFilter.previewHDR(cpu, from: hdr)
-        let accelerated = try PixelFilter.previewHDR(gpu, from: hdr)
+        let reference = try PixelFilter.run(cpu)
+        let accelerated = try PixelFilter.run(gpu)
         #expect(reference.dataProvider?.data == accelerated.dataProvider?.data)
     }
 
