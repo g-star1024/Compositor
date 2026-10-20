@@ -57,6 +57,23 @@ jobs:
           echo "$INFO" | grep -q 'arm64'   || { echo "Missing arm64 slice"; exit 1; }
           echo "Universal binary verified: both arm64 and x86_64 slices present."
 
+      # A green build says nothing about resources: the file-system synchronized
+      # groups decide membership on their own, and a missing table only shows up
+      # when Camera Raw runs.
+      - name: Verify bundled resources
+        run: |
+          RES=DerivedData/Build/Products/Debug/Compositor.app/Contents/Resources
+          MISSING=0
+          for f in CameraRawTables.bin CameraRawShadows.bin; do
+            if [ -f "$RES/$f" ]; then
+              echo "bundled: $f ($(wc -c < "$RES/$f" | tr -d ' ') bytes)"
+            else
+              echo "MISSING bundled resource: $f"
+              MISSING=1
+            fi
+          done
+          [ "$MISSING" -eq 0 ] || exit 1
+
       # These two suites show real windows and time them, so they run alone after the rest.
       # Tests execute on the native arm64 runner (the universal build already validated x86_64 at link time).
       - name: Run unit tests in parallel

@@ -157,6 +157,10 @@ nonisolated struct FilterJob: @unchecked Sendable {
     /// Persistent histogram clipping indicators. Preview only; committing leaves these off.
     var showsShadowClipping = false
     var showsHighlightClipping = false
+    /// What Camera Raw's adaptive sliders read from `image`, when known already: measured once for a session's previews.
+    var cameraRawBrightness: CameraRawTables.Brightness? = nil
+    /// Preview only: the CPU remains the reference for OK, export, and unsupported GPU paths.
+    var cameraRawUsesGPU = false
     /// Point-color range preview. −1 leaves the grade alone.
     var visualizesPointColor = -1
     /// Option-drag on Sharpening Masking. Preview only.
@@ -223,7 +227,8 @@ nonisolated enum PixelFilter {
         case .blackWhite: image = try settings.blackWhite.apply(job.image)
         case .colorBalance: image = try settings.colorBalance.apply(job.image)
         case .cameraRaw: image = try settings.cameraRaw.apply(job.image, clipping: job.cameraRawClipping, scale: job.scale, seed: job.seed,
-                                                                visualizePointColor: job.visualizesPointColor, sharpenMask: job.showsSharpenMask)
+                                                                visualizePointColor: job.visualizesPointColor, sharpenMask: job.showsSharpenMask,
+                                                                brightness: job.cameraRawBrightness, usesGPU: job.cameraRawUsesGPU)
         // Grain sits in layer pixels; the job's seed gives each application its own pattern.
         case .grain: image = try settings.grain.apply(job.image, unitsPerPixel: 1 / job.scale, seed: job.seed)
         case .dither: image = try settings.dither.apply(job.image)
@@ -399,6 +404,18 @@ final class FilterEdit {
     @ObservationIgnored var pendingTransform: LayerTransform?
     /// Reject a render started before the blur's padded pixel grid changed.
     @ObservationIgnored var previewSourceVersion: UInt64 = 0
+    /// Camera Raw's adaptive sliders read the picture before any change, which stays the same while the panel is open:
+    /// measured once from the preview's source, again only when that changes.
+    @ObservationIgnored private var cameraRawBrightness: (version: UInt64, value: CameraRawTables.Brightness)?
+    /// Nil until a worker has measured it. Camera Raw previews at native resolution now, so measuring here would
+    /// put a full-size pass on the main actor in the middle of a slider drag.
+    var previewBrightness: CameraRawTables.Brightness? {
+        guard let cached = cameraRawBrightness, cached.version == previewSourceVersion else { return nil }
+        return cached.value
+    }
+    func cachePreviewBrightness(_ value: CameraRawTables.Brightness, version: UInt64) {
+        cameraRawBrightness = (version, value)
+    }
     /// The settings `preparedPreview` was made with, for the automatic filters that have settings of their own.
     @ObservationIgnored var preparedSettings: FilterSettings?
     @ObservationIgnored var pending: FilterJob?
@@ -491,9 +508,9 @@ final class FilterEdit {
     private static func prepared(kind: FilterKind, from source: CGImage, placed: LayerTransform) throws
         -> (mapping: CGAffineTransform, previewSource: CGImage, previewScale: CGFloat, previewMapping: CGAffineTransform) {
         let mapping = BrushRaster.pixelToDocument(placed, width: source.width, height: source.height)
-        // Noise, grain, dither and scanlines preview at full size: made on a smaller copy they would look coarser once
-        // enlarged.
-        let factor = [.addNoise, .grain, .dither, .scanlines, .contentAwareFill, .removeBackground].contains(kind)
+        // Camera Raw keeps native detail throughout slider drags. Noise, grain, dither and scanlines also need
+        // full-size pixels: made on a smaller copy they would look coarser once enlarged.
+        let factor = [.cameraRaw, .addNoise, .grain, .dither, .scanlines, .contentAwareFill, .removeBackground].contains(kind)
             ? 1 : min(1, previewLimit / CGFloat(max(source.width, source.height)))
         guard factor < 1 else { return (mapping, source, 1, mapping) }
         let w = max(1, Int(CGFloat(source.width) * factor)), h = max(1, Int(CGFloat(source.height) * factor))
@@ -535,6 +552,10 @@ final class FilterEdit {
         job.showsHighlightClipping = showsHighlightClipping
         job.visualizesPointColor = pointColorVisualizeIndex
         job.showsSharpenMask = cameraRawSharpenMask
+        if kind == .cameraRaw {
+            job.cameraRawBrightness = previewBrightness
+            job.cameraRawUsesGPU = previewSource.width * previewSource.height >= MetalCameraRawLookup.minimumPixels
+        }
         return job
     }
 }
@@ -579,6 +600,9 @@ extension EditorSession {
             edit.startedEmpty = startedEmpty
             edit.repeating = repeating
             filterEdit = edit
+            if kind == .cameraRaw, edit.previewSource.width * edit.previewSource.height >= MetalCameraRawLookup.minimumPixels {
+                Task.detached(priority: .utility) { _ = MetalCameraRawLookup.shared }
+            }
             // An automatic filter commits what its preview made, so it still needs one.
             updateFilter(edit.settings, preview: !repeating || kind.isAutomatic)
         } catch { brushError = error.localizedDescription }
@@ -622,30 +646,40 @@ extension EditorSession {
     /// Renders the newest settings; changes that arrive mid-render wait for it rather than
     /// cancelling it, so dragging a slider keeps the canvas updating.
     private func renderFilterPreview(_ edit: FilterEdit) {
-        guard filterEdit === edit, edit.previewTask == nil, let job = edit.pending else { return }
+        guard filterEdit === edit, edit.previewTask == nil, var job = edit.pending else { return }
         edit.pending = nil
         let placement = edit.pendingTransform
         let sourceVersion = edit.previewSourceVersion
         edit.preparing = true
         edit.previewError = nil
+        if job.kind == .cameraRaw { job.cameraRawBrightness = edit.previewBrightness }
         edit.previewTask = Task { @MainActor [weak self, weak edit] in
-            let result = await Task.detached(priority: .userInitiated) { () -> (CGImage?, CameraRawScope?, String?) in
+            let result = await Task.detached(priority: .userInitiated) { () -> (CGImage?, CameraRawScope?, String?, CameraRawTables.Brightness?) in
                 do {
-                    if job.kind == .cameraRaw {
-                        let made = try CameraRawScope.preview(job)
-                        return (made.image, made.scope, nil)
+                    var run = job
+                    // Measure once on the worker, then reuse it for every slider update in this session.
+                    if run.kind == .cameraRaw, run.cameraRawBrightness == nil {
+                        run.cameraRawBrightness = CameraRawTables.brightness(of: run.image)
                     }
-                    return (try PixelFilter.run(job), nil, nil)
+                    if run.kind == .cameraRaw {
+                        let made = try CameraRawScope.preview(run)
+                        return (made.image, made.scope, nil, run.cameraRawBrightness)
+                    }
+                    return (try PixelFilter.run(run), nil, nil, run.cameraRawBrightness)
                 } catch {
-                    return (nil, nil, error.localizedDescription)
+                    return (nil, nil, error.localizedDescription, nil)
                 }
             }.value
-            guard let self, let edit, self.filterEdit === edit, !Task.isCancelled else { return }
+            guard let self, let edit, self.filterEdit === edit, !Task.isCancelled else {
+                if job.cameraRawUsesGPU { Task.detached(priority: .utility) { MetalCameraRawLookup.shared?.discardBuffers() } }
+                return
+            }
             edit.previewTask = nil
             edit.preparing = false
             // Made before the layer grew for a bigger blur: it still shows, in the place it was made for, until the
             // render from the grown layer replaces it.
             let current = sourceVersion == edit.previewSourceVersion
+            if let measured = result.3 { edit.cachePreviewBrightness(measured, version: sourceVersion) }
             edit.previewError = result.2
             if let scope = result.1 { edit.cameraRawScope = scope }
             if (edit.preview || edit.kind.isAutomatic), current || !edit.kind.isAutomatic {
@@ -666,6 +700,9 @@ extension EditorSession {
         if finishAdjustmentEditing(commit: false) { return }
         guard let edit = filterEdit, !edit.committing else { return }
         edit.previewTask?.cancel()
+        if edit.kind == .cameraRaw, edit.previewJob.cameraRawUsesGPU {
+            Task.detached(priority: .utility) { MetalCameraRawLookup.shared?.discardBuffers() }
+        }
         filterEdit = nil
         brushRevision += 1
     }
@@ -700,7 +737,12 @@ extension EditorSession {
         if edit.kind.repeatsAsLastFilter { lastFilter = edit.kind }
         isProjectBusy = true
         // The preview stays up until the result is on the layer, so the canvas never flashes the original.
-        defer { filterEdit = nil; isProjectBusy = false; brushRevision += 1 }
+        defer {
+            filterEdit = nil; isProjectBusy = false; brushRevision += 1
+            if edit.kind == .cameraRaw, edit.previewJob.cameraRawUsesGPU {
+                Task.detached(priority: .utility) { MetalCameraRawLookup.shared?.discardBuffers() }
+            }
+        }
         // Remove Background masks the background out rather than erasing it, so it can be brought back at any time
         // by painting the mask, disabling it, or deleting it.
         if edit.kind == .removeBackground { await commitBackgroundMask(edit); return }
