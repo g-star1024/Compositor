@@ -7,12 +7,12 @@ extension UTType {
     static let compositorProject = UTType(exportedAs: "com.compositor.project", conformingTo: .package)
     nonisolated static let photoshopImage = UTType(importedAs: "com.adobe.photoshop-image")
     nonisolated static let photoshopLargeImage = UTType(importedAs: "com.adobe.photoshop-large-image")
-    static let importableImages: [UTType] = [.jpeg, .png, .heic, .tiff, .photoshopImage, .photoshopLargeImage, .rawImage, .svg]
+    static let importableImages: [UTType] = [.jpeg, .png, .heic, .heif, .tiff, .webP, .photoshopImage, .photoshopLargeImage, .rawImage, .svg]
 }
 
 nonisolated struct ProjectManifest: Codable, Sendable {
     /// The format version new saves write.
-    static let current = 11
+    static let current = 12
     /// Every version `load` accepts. The package-header check, the manifest check and the error
     /// message all read this, so they cannot drift apart when `current` is bumped.
     static let supported = 1...ProjectManifest.current
@@ -205,6 +205,9 @@ actor ProjectStore {
         guard (1...DocumentLimits.maxSide).contains(manifest.width), (1...DocumentLimits.maxSide).contains(manifest.height),
               manifest.layers.count <= 10_000 else { throw ProjectError.tooLarge }
         for layer in manifest.layers {
+            if layer.shape?.smoothing == true {
+                guard manifest.version >= 12 else { throw ProjectError.invalid }
+            }
             if let text = layer.text {
                 // Per-letter colors arrived in version 10, per-letter faces in version 11.
                 guard text.isValid,

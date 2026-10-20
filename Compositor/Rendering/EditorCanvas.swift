@@ -64,6 +64,8 @@ final class CanvasView: NSView {
     private var lastDragPoint: CGPoint?
     /// Where a middle-button pan last was (see otherMouseDown).
     private var middlePanPoint: CGPoint?
+    /// A middle-button zoom with Command or Control held: where it started, and the zoom then.
+    private var middleZoom: (start: CGPoint, zoom: CGFloat, lastY: CGFloat, zoomingIn: Bool)?
     /// Where Shift was last pressed in the stroke in progress (or where the stroke started, if it was held then):
     /// the line the stroke is kept on while Shift stays down.
     private var brushAxisAnchor: CGPoint?
@@ -504,7 +506,7 @@ final class CanvasView: NSView {
     private static let zoomOutCursor = zoomCursor(out: true)
     /// A Zoom tool press: dragging left or right zooms smoothly about where it began; a press that doesn't move
     /// zooms a step on release instead.
-    private var zoomDrag: (start: CGPoint, zoom: CGFloat, moved: Bool)?
+    private var zoomDrag: (start: CGPoint, zoom: CGFloat, moved: Bool, lastX: CGFloat, zoomingIn: Bool)?
 
     private struct DisplayState: Equatable {
         struct Layer: Equatable {
@@ -1260,7 +1262,7 @@ final class CanvasView: NSView {
             context.addLine(to: center(ends.end))
             context.strokePath()
         } else {
-            context.addPath(draft.kind.path(in: rect, cornerRadius: draft.cornerRadius * scale))
+            context.addPath(draft.kind.path(in: rect, cornerRadius: draft.cornerRadius * scale, smoothing: draft.smoothing))
             context.fillPath()
         }
         context.restoreGState()
@@ -1448,7 +1450,10 @@ final class CanvasView: NSView {
 
     /// The current tool's cursor over the canvas, with nothing being picked or dragged.
     private var toolCursor: NSCursor {
-        spaceHeld || session.tool == .hand ? .openHand
+        if session.tool == .zoom, !spaceHeld, let drag = zoomDrag, drag.moved {
+            return drag.zoomingIn ? Self.zoomInCursor : Self.zoomOutCursor
+        }
+        return spaceHeld || session.tool == .hand ? .openHand
             // The Move tool's cursor depends on the pointer (handles, Option to duplicate), so match it here.
             : session.tool == .move ? window.map { transformCursor(at: convert($0.mouseLocationOutsideOfEventStream, from: nil)) } ?? .arrow
             : session.tool == .type ? .iBeam
@@ -1504,7 +1509,7 @@ final class CanvasView: NSView {
         hoverTrackingArea = area
     }
     private func updateBrushCursor() {
-        let shows = session.tool.isBrushTool && !spaceHeld && !picking && middlePanPoint == nil
+        let shows = session.tool.isBrushTool && !spaceHeld && !picking && middlePanPoint == nil && middleZoom == nil
         let diameter = session.brushStroke?.settings.diameter ?? session.brushSettings.diameter
         // Clone Stamp also marks where it is copying from and, between strokes, previews inside
         // the circle what a click would stamp there.
@@ -1849,7 +1854,8 @@ final class CanvasView: NSView {
             if beginGuideDrag(at: point) { return }
             beginTransformDrag(at: point, modifiers: event.modifierFlags)
         } else if session.tool == .zoom {
-            zoomDrag = (point, session.viewport.zoom, false)
+            zoomDrag = (point, session.viewport.zoom, false, point.x, !optionHeld)
+            toolCursor.set()
         }
     }
     override func mouseDragged(with event: NSEvent) {
@@ -1867,7 +1873,16 @@ final class CanvasView: NSView {
         if textBoxAnchor != nil { dragTextGesture(to: point); return }
         if var drag = zoomDrag {
             let dx = point.x - drag.start.x
-            if abs(dx) >= 3 { drag.moved = true; zoomDrag = drag }
+            if abs(dx) >= 3 { drag.moved = true }
+            if drag.moved, point.x != drag.lastX {
+                let zoomingIn = point.x > drag.lastX
+                if zoomingIn != drag.zoomingIn {
+                    (zoomingIn ? Self.zoomInCursor : Self.zoomOutCursor).set()
+                }
+                drag.zoomingIn = zoomingIn
+            }
+            drag.lastX = point.x
+            zoomDrag = drag
             // Right zooms in, left out: doubling for every 100 points dragged.
             if drag.moved { session.zoom(to: drag.zoom * pow(2, dx / 100), anchor: drag.start) }
             return
@@ -2009,26 +2024,50 @@ final class CanvasView: NSView {
         lastDragPoint = point
         redrawRulers()
     }
-    /// The middle button pans from any tool, without reaching for Space or the Hand tool. It keeps
-    /// its own drag point so it can't disturb whatever the left button is in the middle of.
+    /// The middle button pans from any tool, without reaching for Space or the Hand tool, and with Command or Control
+    /// held zooms, as in Blender: up zooms in, down out, about where it was pressed. It keeps its own drag point so it
+    /// can't disturb whatever the left button is in the middle of.
     private func panPoint(of event: NSEvent) -> CGPoint { convert(event.locationInWindow, from: nil) }
     override func otherMouseDown(with event: NSEvent) {
         guard event.buttonNumber == 2, session.document != nil else { super.otherMouseDown(with: event); return }
-        middlePanPoint = panPoint(of: event)
+        let point = panPoint(of: event)
+        if !event.modifierFlags.intersection([.command, .control]).isEmpty {
+            middleZoom = (point, session.viewport.zoom, point.y, true)
+            Self.zoomInCursor.set()
+        } else {
+            middlePanPoint = point
+            NSCursor.closedHand.set()
+        }
         if session.tool.isBrushTool { updateBrushCursor() }
-        NSCursor.closedHand.set()
     }
     override func otherMouseDragged(with event: NSEvent) {
-        guard let last = middlePanPoint else { super.otherMouseDragged(with: event); return }
         let point = panPoint(of: event)
+        if var zoom = middleZoom {
+            // The symbol follows the latest movement, even before crossing the drag's starting point.
+            if point.y != zoom.lastY {
+                let zoomingIn = point.y < zoom.lastY
+                if zoomingIn != zoom.zoomingIn {
+                    (zoomingIn ? Self.zoomInCursor : Self.zoomOutCursor).set()
+                }
+                zoom.lastY = point.y
+                zoom.zoomingIn = zoomingIn
+                middleZoom = zoom
+            }
+            // The view is flipped, so up is toward smaller y. Doubling for every 100 points, as the Zoom tool drags.
+            let factor = pow(2, (zoom.start.y - point.y) / 100)
+            session.zoom(to: zoom.zoom * factor, anchor: zoom.start)
+            return
+        }
+        guard let last = middlePanPoint else { super.otherMouseDragged(with: event); return }
         session.viewport.translate(by: CGSize(width: point.x - last.x, height: point.y - last.y))
         middlePanPoint = point
         redrawRulers()
     }
     override func otherMouseUp(with event: NSEvent) {
-        guard middlePanPoint != nil else { super.otherMouseUp(with: event); return }
+        guard middlePanPoint != nil || middleZoom != nil else { super.otherMouseUp(with: event); return }
         middlePanPoint = nil
-        // The closed hand was set directly, so put the tool's own cursor back rather than waiting
+        middleZoom = nil
+        // The hand or magnifier was set directly, so put the tool's own cursor back rather than waiting
         // for the next move.
         refreshLassoCursor(event.modifierFlags)
         if session.tool.isBrushTool { updateBrushCursor() }
@@ -2046,6 +2085,9 @@ final class CanvasView: NSView {
             if !drag.moved {
                 session.zoom(to: session.viewport.zoom * (event.modifierFlags.contains(.option) ? 0.5 : 2), anchor: drag.start)
             }
+            optionHeld = event.modifierFlags.contains(.option)
+            restoreToolCursor()
+            window?.invalidateCursorRects(for: self)
             return
         }
         session.snapGuides = ([], [])

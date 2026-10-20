@@ -17,7 +17,31 @@ Get Compositor from [robbietilton.com/compositor](https://robbietilton.com/compo
 brew install --cask robbietilton-compositor
 ```
 
-## What's new in v1.6.0 (unreleased)
+## What's new in v1.7.0 (unreleased)
+
+Feature parity with upstream v1.4.9 – v1.5.3, on top of v1.6.0. Formats and controls:
+
+- **WebP import**: `.webp` files open like any other image.
+- **HEIF import**: `.hif` and `.heif` files from cameras.
+- **Import a folder as layers**: dropping a folder on the canvas adds its images as separate layers.
+- **RAW develop: Lens Correction and Highlight Recovery** alongside Noise Reduction. Highlight Recovery needs macOS 26; on macOS 14–15 the control stays off and disabled.
+- **Gaussian Blur: Preserve Transparency**, solid edges at the canvas bounds, 5 px to start.
+- **Smooth rectangle corners**: Figma-style 60% smoothing (the iOS squircle match), with a simplified shape controls bar.
+- **Camera Raw**: Light and Color sliders now match Photoshop's Camera Raw Filter.
+- **Layer effects and live text survive** canvas size changes and adjustments instead of being flattened.
+
+Workflow:
+
+- **⌘/⌃ + middle-drag zooms**, as in Blender; **middle-drag scrolls the layer list**.
+- **Zoom cursors update immediately** when the drag direction changes.
+- **Tabs**: the blank start tab stays put, and Untitled numbers stay low.
+- **Drop anywhere on the tab bar** to open in a new project; a layer dragged into a new project sizes the canvas to it; **paste an image on the New canvas screen** to make the canvas.
+- **Layers panel**: adjustment layer button before layer effects; the panel at its narrowest keeps everything inside it.
+- **Update alert lists what's new** in the same compact dialog.
+
+- **zh-Hans**: 16 new strings translated (catalog now 473 keys).
+
+## What's new in v1.6.0
 
 Feature parity with upstream v1.4.7 + v1.4.8, on top of v1.5.0's macOS 14 / universal / zh-Hans base:
 
@@ -93,7 +117,7 @@ The compatibility work touched 14 macOS 15/26-only APIs across the editor canvas
 - Canvas Size, Image Size and Trim
 - A Navigator minimap in the canvas's corner from 300% zoom: the whole document in small with a box around the view; click or drag to move there (View › Navigator)
 - Sharp high-quality downsampling when zoomed out, and a pixel grid when zoomed in
-- Import JPEG, PNG, HEIC, TIFF, SVG, camera RAW (with a develop step first) and Photoshop PSD and PSB (8-bit RGB; not CMYK). Photoshop folders, masks, blend modes, fill rectangles/ellipses, and simple horizontal text stay editable; other vectors and vertical text become pixels. A conversion report is shown before anything is applied.
+- Import JPEG, PNG, HEIC, TIFF, WebP, SVG, camera RAW (with a develop step first) and Photoshop PSD and PSB (8-bit RGB; not CMYK). Photoshop folders, masks, blend modes, fill rectangles/ellipses, and simple horizontal text stay editable; other vectors and vertical text become pixels. A conversion report is shown before anything is applied.
 - Large documents: the memory budget scales with your Mac, and a Photoshop file too big to open has its layers cropped to the canvas instead
 - Export PNG (⇧⌘E), Export JPEG (⇧⌥⌘S), and Export As (⇧⌥⌘W) for PNG, JPEG or a one-page PDF at the print size, scaled if you like, with a live preview, JPEG quality and file size; Copy Merged
 - Keep working while a project saves
