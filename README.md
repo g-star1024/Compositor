@@ -17,7 +17,7 @@ Get Compositor from [robbietilton.com/compositor](https://robbietilton.com/compo
 brew install --cask robbietilton-compositor
 ```
 
-## What's new in v1.7.0 (unreleased)
+## What's new in v1.7.0
 
 Feature parity with upstream v1.4.9 – v1.5.3, on top of v1.6.0. Formats and controls:
 
