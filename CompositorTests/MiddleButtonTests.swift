@@ -39,6 +39,28 @@ struct MiddleButtonTests {
         view.otherMouseUp(with: try event(.otherMouseUp, rise: -100, flags: modifier))
     }
 
+    @Test(arguments: [CGEventFlags.maskCommand, .maskControl])
+    func zoomCursorChangesAsSoonAsTheDragReverses(_ modifier: CGEventFlags) throws {
+        let (session, view, window) = try canvas()
+        defer { window.orderOut(nil) }
+        view.otherMouseDown(with: try event(.otherMouseDown, rise: 0, flags: modifier))
+        let zoomInCursor = NSCursor.current
+        view.otherMouseDragged(with: try event(.otherMouseDragged, rise: 100, flags: modifier))
+        let peak = session.viewport.zoom
+        #expect(NSCursor.current === zoomInCursor)
+        view.otherMouseDragged(with: try event(.otherMouseDragged, rise: 80, flags: modifier))
+        #expect(session.viewport.zoom < peak)
+        let zoomOutCursor = NSCursor.current
+        #expect(zoomOutCursor !== zoomInCursor, "reverse above the starting point")
+        view.otherMouseDragged(with: try event(.otherMouseDragged, rise: 80, flags: modifier))
+        #expect(NSCursor.current === zoomOutCursor, "no vertical movement keeps the direction")
+        view.otherMouseDragged(with: try event(.otherMouseDragged, rise: -100, flags: modifier))
+        #expect(NSCursor.current === zoomOutCursor)
+        view.otherMouseDragged(with: try event(.otherMouseDragged, rise: -80, flags: modifier))
+        #expect(NSCursor.current === zoomInCursor, "reverse below the starting point")
+        view.otherMouseUp(with: try event(.otherMouseUp, rise: -80, flags: modifier))
+    }
+
     @Test func withoutAModifierItPans() throws {
         let (session, view, window) = try canvas()
         defer { window.orderOut(nil) }
