@@ -1464,6 +1464,17 @@
         }
       }
     },
+    "Fill color": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "填充颜色"
+          }
+        }
+      }
+    },
     "Fill the selection using surrounding pixels from this layer.": {
       "extractionState": "manual",
       "localizations": {
@@ -3968,6 +3979,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "跳过此版本"
+          }
+        }
+      }
+    },
+    "Smooth Corners": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "平滑圆角"
           }
         }
       }
