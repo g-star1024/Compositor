@@ -582,6 +582,18 @@ struct CameraRawTests {
         #expect(hottest % CameraRawScope.scopeSide > CameraRawScope.scopeSide / 2, "red sits on the right of the vectorscope")
     }
 
+    @Test func scopeSamplingChangesAtFourMegapixelsWithoutChangingColors() throws {
+        // The C kernel divides rows among 16 bands, rounding each band's sample count up.
+        for (width, height, count) in [(2000, 2000, 256_000), (2001, 2000, 64_256)] {
+            let red = try image(width: width, height: height, red: 1, green: 0, blue: 0)
+            let scope = try #require(CameraRawScope.make(red))
+            #expect(scope.red[255] == Double(count))
+            #expect(scope.green[0] == Double(count) && scope.blue[0] == Double(count))
+            #expect(scope.red.reduce(0, +) == Double(count))
+            #expect(scope.vectorscope.reduce(0, +) == Double(count))
+        }
+    }
+
     @Test func curveMixerAndGradingChangeOnlyTheirOwnTones() throws {
         let dark = try image(red: 0.12, green: 0.12, blue: 0.12)
         let light = try image(red: 0.62, green: 0.62, blue: 0.62)

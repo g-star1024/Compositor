@@ -338,14 +338,15 @@ nonisolated struct CameraRawScope: Equatable, Sendable {
     }
 
     /// Counts the graded image. Fully transparent pixels are skipped.
-    /// The histogram and vectorscope from every other pixel each way, plenty for a scope drawn to its peak, read
-    /// straight from the image's bytes when they're already premultiplied RGBA.
+    /// Sample every fourth pixel each way up to 4 megapixels, every eighth above that. Read straight from the
+    /// image's bytes when they're already premultiplied RGBA; this does not affect the grade or clipping paint.
     static func make(_ image: CGImage) -> Self? {
         guard image.width > 0, image.height > 0 else { return nil }
+        let step = image.width * image.height <= 4_000_000 ? 4 : 8
         var bins = Array(repeating: 0.0, count: binCount * 3)
         var scope = Array(repeating: 0.0, count: scopeSide * scopeSide)
         func measure(_ bytes: UnsafePointer<UInt8>, _ stride: Int) {
-            camera_raw_scope(bytes, image.width, image.height, stride, 2, &bins, &scope, Int32(scopeSide))
+            camera_raw_scope(bytes, image.width, image.height, stride, Int32(step), &bins, &scope, Int32(scopeSide))
         }
         let info = CGBitmapInfo(rawValue: image.bitmapInfo.rawValue)
         if image.bitsPerPixel == 32, image.bitsPerComponent == 8, image.alphaInfo == .premultipliedLast,
