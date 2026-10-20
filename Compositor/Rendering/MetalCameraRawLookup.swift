@@ -1,6 +1,18 @@
 import Foundation
 import Metal
-import Synchronization
+
+/// `Mutex` is macOS 15 and this fork targets 14, so the scratch buffers are held behind an NSLock
+/// instead. `@unchecked` because `Buffers` carries `MTLBuffer`, which is not itself Sendable.
+private final class CameraRawBufferLock: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value: MetalCameraRawLookup.Buffers?
+    init(_ value: MetalCameraRawLookup.Buffers?) { self.value = value }
+    func withLock<T>(_ body: (inout MetalCameraRawLookup.Buffers?) throws -> T) rethrows -> T {
+        lock.lock()
+        defer { lock.unlock() }
+        return try body(&value)
+    }
+}
 
 /// The existing composed color table on Metal. Values close to an 8-bit rounding boundary are repaired by
 /// the CPU's double-precision lookup, so a precision difference cannot accumulate through later effects.
@@ -10,12 +22,12 @@ nonisolated final class MetalCameraRawLookup: Sendable {
     private let device: MTLDevice
     private let queue: MTLCommandQueue
     private let pipeline: MTLComputePipelineState
-    private struct Buffers {
+    fileprivate struct Buffers {
         let pixels: MTLBuffer
         let uncertain: MTLBuffer
         let lookup: MTLBuffer
     }
-    private let buffers = Mutex<Buffers?>(nil)
+    private let buffers = CameraRawBufferLock(nil)
 
     /// Called on a worker when a Camera Raw session closes, so large scratch buffers don't remain resident.
     func discardBuffers() { buffers.withLock { $0 = nil } }
