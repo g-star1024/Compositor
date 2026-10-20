@@ -2,7 +2,8 @@ import AppKit
 import Testing
 @testable import Compositor
 
-/// Serialized: every test shares the one system pasteboard.
+/// Serialized: every test in this process shares its one pasteboard (`EditorSession.pasteboard`, private to the process,
+/// so other test processes running in parallel can't copy over it).
 @MainActor @Suite(.serialized)
 struct SelectionClipboardTests {
     private let red = PaletteColor(red: 1, green: 0, blue: 0)

@@ -4,7 +4,7 @@ import AppKit
 struct PixelClipboard {
     let image: CGImage
     let origin: CGPoint
-    /// The system pasteboard's change count right after writing; a mismatch means another app copied since.
+    /// The pasteboard's change count right after writing; a mismatch means another app copied since.
     let changeCount: Int
 }
 
@@ -18,6 +18,11 @@ struct CopiedLayer {
 }
 
 extension EditorSession {
+    /// The pasteboard Copy and Paste use: the system's, except under tests, where each test process gets one of its own,
+    /// so tests running in parallel processes don't copy over each other's pixels.
+    static let pasteboard: NSPasteboard = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil
+        ? .general : .withUniqueName()
+
     /// Whole-pixel bounds of what Copy takes: the selection, or the whole canvas without one.
     /// Path boolean operations leave tiny float noise (59.9999999), so round with a tolerance
     /// rather than letting it add a whole pixel.
@@ -103,7 +108,7 @@ extension EditorSession {
     func copySelection() {
         guard canCopyPixels || canCopyLayer, let layer = activeLayer else { return }
         guard canCopyPixels else {
-            let pasteboard = NSPasteboard.general
+            let pasteboard = Self.pasteboard
             pasteboard.clearContents()
             pasteboard.setString(layer.id.uuidString, forType: NSPasteboard.PasteboardType("com.compositor.copied-layer"))
             pixelClipboard = nil
@@ -113,13 +118,13 @@ extension EditorSession {
         do {
             guard let copied = try renderSelectedPixels(from: layer, mask: isMaskSelected) else { NSSound.beep(); return }
             store(copied)
-            if canCopyLayer { copiedLayer = CopiedLayer(ids: copiedLayerIDs(), changeCount: NSPasteboard.general.changeCount) }
+            if canCopyLayer { copiedLayer = CopiedLayer(ids: copiedLayerIDs(), changeCount: Self.pasteboard.changeCount) }
         } catch { brushError = error.localizedDescription }
     }
 
     /// Keeps pixels for Paste and puts them on the system pasteboard as PNG.
     private func store(_ copied: (image: CGImage, region: CGRect)) {
-        let pasteboard = NSPasteboard.general
+        let pasteboard = Self.pasteboard
         pasteboard.clearContents()
         if let png = NSBitmapImageRep(cgImage: copied.image).representation(using: .png, properties: [:]) {
             pasteboard.setData(png, forType: .png)
@@ -137,15 +142,15 @@ extension EditorSession {
 
     var canPaste: Bool {
         guard document != nil, canEditLayers else { return false }
-        if let pixelClipboard, NSPasteboard.general.changeCount == pixelClipboard.changeCount { return true }
-        return NSPasteboard.general.canReadObject(forClasses: [NSImage.self], options: nil)
+        if let pixelClipboard, Self.pasteboard.changeCount == pixelClipboard.changeCount { return true }
+        return Self.pasteboard.canReadObject(forClasses: [NSImage.self], options: nil)
     }
 
     /// Cmd-V: pastes as a new layer above the active one. Pixels copied here go back exactly
     /// where they came from; images copied in other apps are centered.
     func paste() {
         guard canPaste, let document else { return }
-        let pasteboard = NSPasteboard.general
+        let pasteboard = Self.pasteboard
         if let clip = pixelClipboard, pasteboard.changeCount == clip.changeCount {
             addPixelLayer(clip.image, at: clip.origin, name: nextLayerName(), editName: "Paste")
         } else if let external = NSImage(pasteboard: pasteboard)?.cgImage(forProposedRect: nil, context: nil, hints: nil),
