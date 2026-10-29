@@ -771,6 +771,26 @@ final class EditorSession {
         document?.layers[index].isVisible.toggle()
     }
 
+    /// Hide Layer / Show Layer, from the menus: the selected layers all hidden, or with the active one hidden, all
+    /// shown, as one undo step.
+    func toggleSelectedLayersVisibility() {
+        guard canEditLayers, let active = activeLayer else { return }
+        let ids = selectedLayerIDs.union([active.id])
+        let visible = !active.isVisible
+        beginEdit(visibilityTitle)
+        defer { endEdit() }
+        guard let layers = document?.layers else { return }
+        document?.layers = layers.map { layer in
+            var layer = layer
+            if ids.contains(layer.id) { layer.isVisible = visible }
+            return layer
+        }
+    }
+    /// The menus' name for `toggleSelectedLayersVisibility`.
+    var visibilityTitle: String {
+        (activeLayer?.isVisible == false ? "Show " : "Hide ") + (selectedLayerIDs.count > 1 ? "Layers" : "Layer")
+    }
+
     /// Photoshop's eye swipe: pressing an eye shows or hides that layer, and dragging over other eyes gives them the
     /// same state, all as one undo step (`beginEdit` at the press, `endEdit` when the button comes up).
     func beginVisibilitySwipe(_ id: UUID) -> Bool? {

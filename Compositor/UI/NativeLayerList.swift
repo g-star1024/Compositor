@@ -151,8 +151,7 @@ struct NativeLayerList: NSViewRepresentable {
             menu.addItem(NSMenuItem.separator())
 
             // 4. Create Clipping Mask / Release Clipping Mask
-            let clippingTitle = session.activeLayer?.maskSourceID != nil ? "Release Clipping Mask" : "Create Clipping Mask"
-            let clippingItem = NSMenuItem(title: clippingTitle, action: #selector(toggleClippingMaskAction), keyEquivalent: "")
+            let clippingItem = NSMenuItem(title: session.selectedClippingTitle, action: #selector(toggleClippingMaskAction), keyEquivalent: "")
             clippingItem.target = self
             clippingItem.isEnabled = validateMenuItem(clippingItem)
             menu.addItem(clippingItem)
@@ -229,9 +228,8 @@ struct NativeLayerList: NSViewRepresentable {
 
             menu.addItem(NSMenuItem.separator())
 
-            // 12. Hide Layer / Show Layer
-            let visibilityTitle = session.activeLayer?.isVisible == false ? "Show Layer" : "Hide Layer"
-            let visibilityItem = NSMenuItem(title: visibilityTitle, action: #selector(toggleVisibilityAction), keyEquivalent: "")
+            // 12. Hide Layer / Show Layer, or Layers with several selected
+            let visibilityItem = NSMenuItem(title: session.visibilityTitle, action: #selector(toggleVisibilityAction), keyEquivalent: "")
             visibilityItem.target = self
             visibilityItem.isEnabled = validateMenuItem(visibilityItem)
             menu.addItem(visibilityItem)
@@ -248,7 +246,7 @@ struct NativeLayerList: NSViewRepresentable {
             case #selector(deleteLayerAction):
                 return session.canEditLayers && session.activeLayer != nil
             case #selector(toggleClippingMaskAction):
-                return session.activeLayerID.map { session.canToggleClippingMask($0) } ?? false
+                return session.canToggleSelectedClipping
             case #selector(groupSelectedLayersAction):
                 return session.canEditLayers && session.document != nil && (session.document?.layers.count ?? 0) < 10_000 && !session.selectedLayerIDs.isEmpty
             case #selector(ungroupLayersAction):
@@ -291,7 +289,7 @@ struct NativeLayerList: NSViewRepresentable {
         }
 
         @objc func toggleClippingMaskAction(_ sender: Any?) {
-            if let id = session.activeLayerID { session.toggleClippingMask(id) }
+            session.toggleSelectedClipping()
         }
 
         @objc func groupSelectedLayersAction(_ sender: Any?) {
@@ -343,8 +341,7 @@ struct NativeLayerList: NSViewRepresentable {
         }
 
         @objc func toggleVisibilityAction(_ sender: Any?) {
-            guard let id = session.activeLayerID else { return }
-            session.toggleLayerVisibility(id)
+            session.toggleSelectedLayersVisibility()
         }
 
         func numberOfRows(in tableView: NSTableView) -> Int { rows.count }
