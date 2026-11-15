@@ -153,7 +153,6 @@ struct LayersHeader: View {
                 get: { session.layerTypeFilter.isEmpty },
                 set: { on in if on { session.clearLayerTypeFilter() } }
             ))
-            .labelReservedIconWidth(16)
             .accessibilityIdentifier("layerFilterAll")
             Divider()
             ForEach(LayerType.allCases.filter { $0 != .selected }, id: \.self) { typeToggle($0) }
@@ -168,7 +167,6 @@ struct LayersHeader: View {
             get: { session.layerTypeFilter.contains(kind) },
             set: { on in if on { session.layerTypeFilter.insert(kind) } else { session.layerTypeFilter.remove(kind) } }
         ))
-        .labelReservedIconWidth(16)
         .accessibilityLabel(kind.filterLabel)
         .accessibilityIdentifier(kind.accessibilityID)
     }
