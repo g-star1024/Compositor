@@ -87,9 +87,8 @@ jobs:
 
       # These two suites show real windows and time them, so they run alone after the rest.
       # Tests execute on the native arm64 runner (the universal build already validated x86_64 at link time).
-      # Serial: Xcode 26's parallel test workers occasionally die as a group on the macos-26
-      # runner, reporting a whole suite as "failed (0.000 seconds)" with no assertion failure.
-      # A serial run is slower but deterministic.
+      # Serial: one process makes a crashing test point at itself instead of taking a whole
+      # parallel worker's tests down with it. Slightly slower, but failures are deterministic.
       - name: Run unit tests
         id: parallel
         run: >

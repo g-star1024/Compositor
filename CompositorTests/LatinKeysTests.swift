@@ -4,7 +4,9 @@ import Testing
 
 /// A layout that types no Latin letters still reaches the tool shortcuts, on the same physical keys the Latin
 /// layout uses for them.
-struct LatinKeysTests {
+/// AppKit's NSEvent and Carbon's keyboard-layout APIs are main-thread only; upstream keeps this
+/// test inside the @MainActor KeyboardShortcutTests suite for the same reason.
+@MainActor struct LatinKeysTests {
     @Test func nonLatinLayoutsReachTheShortcutsOnTheSameKeys() throws {
         func key(_ typed: String, code: UInt16) throws -> NSEvent {
             try #require(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
