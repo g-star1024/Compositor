@@ -17,6 +17,28 @@ Get Compositor from [robbietilton.com/compositor](https://robbietilton.com/compo
 brew install --cask robbietilton-compositor
 ```
 
+## What's new in v1.8.0
+
+The v1.5 feature set, selected upstream fixes and four features built here, while keeping the macOS 14 / universal / 简体中文 base. **HDR/EXR is deliberately not included** — it needs macOS 26 Image I/O codecs and would break the macOS 14 promise.
+
+Formats and editing:
+
+- **16-bit layers end to end**: imported 16-bit images keep their precision, adjustments, Liquify, Smudge, Blur and gradients stay at 16 bits, and the canvas dithers rather than rounds them down to 8 bits for display.
+- **CMYK for print**: open CMYK Photoshop files and remember their profile, proof on the canvas, and export through a chosen CMYK profile (with a matte) alongside PNG / JPEG / TIFF / PDF.
+- **Filter › Progressive Blur**, and **RAW imports** that go through Camera Raw instead of a plain decode.
+- **Export As…** puts JPEG and PNG first, TIFF and PDF under *More*, and starts every document on RGB with a quieter Color choice.
+
+Selected upstream fixes: wheel zoom direction, ⌘D deselect after a Magic Wand click, hold Space while drawing a Marquee to move it, and Show/Hide Layer + Create/Release Clipping Mask acting on every selected layer.
+
+Built for this fork:
+
+- **Shortcuts on any keyboard layout** — a key typing a non-Latin letter is read as the Latin letter on the same physical key, so the Brush still answers to B on Russian, Greek, Arabic or Hebrew layouts.
+- **Layer › Align / Distribute** — six alignments and four distributions across selected layers, the canvas or a selection.
+- **Layer › Split Channels** — turns the active layer into a folder of Red / Green / Blue / Alpha grayscale layers, backed by the Channel Pack reader.
+- **Layers panel search and type filter** — filter by name, by image / shape / text / folder / adjustment / selected, with a layer count in the header.
+
+- **zh-Hans**: 90 new strings translated (catalog now 620 keys). Deployment target remains **macOS 14.0**, project format remains **v12**.
+
 ## What's new in v1.7.0
 
 Feature parity with upstream v1.4.9 – v1.5.3, on top of v1.6.0. Formats and controls:
