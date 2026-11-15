@@ -128,27 +128,34 @@ jobs:
         run: |
           python3 - <<'PY'
           import re
-          pattern = re.compile(r"✘|Expectation failed|failed after|Issue recorded|crash|error:|Failing tests")
+          # xcodebuild emits harmless "error: NSCocoaErrorDomain ... com.apple.linkd" lines;
+          # they would drown the real test failures out of a single annotation.
+          noise = ("NSCocoaErrorDomain", "com.apple.linkd", "[Connection]",
+                   "Unable to ", "Process Instance Registry", "linkd.autoShortcut")
+          keep = re.compile(r"✘|Expectation failed|failed after|Test case .* failed|"
+                            r"Failing tests|Issue recorded|TEST FAILED|failed \(|XCTAssert")
+          def clean(text):
+              return [l.strip() for l in text.splitlines()
+                      if l.strip() and not any(n in l for n in noise)]
           lines = []
           for path in ("parallel-tests.log", "serial-tests.log"):
               try:
                   text = open(path, errors="replace").read()
               except OSError:
                   continue
-              for line in text.splitlines():
-                  if pattern.search(line):
-                      line = line.strip()
-                      if line and line not in lines:
-                          lines.append(line)
+              for line in clean(text):
+                  if keep.search(line) and line not in lines:
+                      lines.append(line)
           if not lines:
               for path in ("parallel-tests.log", "serial-tests.log"):
                   try:
-                      lines.extend(open(path, errors="replace").read().splitlines()[-25:])
+                      lines.extend(clean(open(path, errors="replace").read())[-20:])
                   except OSError:
                       pass
           def esc(s):
-              return s.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")[:400]
-          print("::error title=Test failures::" + "%0A".join(esc(l) for l in lines[:40]))
+              return s.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")[:220]
+          print("::error title=Test failures (%d)::%s" %
+                (len(lines), "%0A".join(esc(l) for l in lines[:30])))
           PY
 
       - name: Upload test results
