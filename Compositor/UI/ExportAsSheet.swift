@@ -235,11 +235,6 @@ struct ExportAsSheet: View {
 
     private var formats: [ExportFormat] { ExportFormat.allCases }
 
-    private func choose(_ chosen: CMYKProfile) {
-        profile = chosen
-        session.proofProfile = chosen
-    }
-
     /// RGB or CMYK: one small menu, as few need CMYK. The profile CMYK goes through is View › CMYK › Profile's, named in
     /// the line under the settings.
     private var colorMenu: some View {
@@ -249,7 +244,6 @@ struct ExportAsSheet: View {
         }
         .menuStyle(.button).buttonStyle(.bordered).fixedSize()
         .help("CMYK writes a printer's inks through the profile in View › CMYK › Profile")
-    }
     }
 
     private func loadProfile() {
