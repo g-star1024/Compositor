@@ -87,7 +87,10 @@ jobs:
 
       # These two suites show real windows and time them, so they run alone after the rest.
       # Tests execute on the native arm64 runner (the universal build already validated x86_64 at link time).
-      - name: Run unit tests in parallel
+      # Serial: Xcode 26's parallel test workers occasionally die as a group on the macos-26
+      # runner, reporting a whole suite as "failed (0.000 seconds)" with no assertion failure.
+      # A serial run is slower but deterministic.
+      - name: Run unit tests
         id: parallel
         run: >
           set -o pipefail;
@@ -97,7 +100,7 @@ jobs:
           -destination 'platform=macOS,arch=arm64'
           -derivedDataPath DerivedData
           -resultBundlePath ParallelResults.xcresult
-          -parallel-testing-enabled YES
+          -parallel-testing-enabled NO
           -skip-testing:CompositorTests/FloatingPanelTests
           -skip-testing:CompositorTests/SliderSnapTests
           2>&1 | tee parallel-tests.log
