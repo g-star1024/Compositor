@@ -216,6 +216,9 @@ final class ShortcutSettings {
     /// Translate only at the existing canvas/layer responder boundary. Native text
     /// fields and dialog controls retain their normal typing and navigation behavior.
     func canvasEvent(_ event: NSEvent) -> NSEvent? {
+        // On a layout that types no Latin letters, read the key as what the same key types on the Latin layout
+        // macOS uses for Command shortcuts, so tool shortcuts still work (Russian, Greek, Arabic, Hebrew…).
+        let event = LatinKeys.event(event)
         let input = ShortcutChord(event)
         // A key that types nothing (a dead key on some layouts) reads as no key, as an unassigned command's does.
         guard !overrides.isEmpty, !input.isNone else { return event }

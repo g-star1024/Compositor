@@ -10,12 +10,7 @@ struct LayersPanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Text("Layers").font(.system(size: 12, weight: .semibold))
-                Spacer()
-                Text("\(session.document?.layers.count ?? 0)").font(.caption.monospacedDigit()).foregroundStyle(.tertiary)
-                    .accessibilityIdentifier("layerCount")
-            }.padding(18)
+            LayersHeader(session: session)
             Divider()
             LayerAppearanceControls(session: session, layerID: session.activeLayerID).id(session.activeLayerID)
             Divider()

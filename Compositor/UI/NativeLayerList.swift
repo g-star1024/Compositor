@@ -58,7 +58,7 @@ struct NativeLayerList: NSViewRepresentable {
         func update(_ table: NSTableView) {
             let selectionChanged = activeLayerID != session.activeLayerID
             activeLayerID = session.activeLayerID
-            let entries = session.layerRows
+            let entries = session.filteredLayerRows
             let byID = Dictionary(uniqueKeysWithValues: (session.document?.layers ?? []).map { ($0.id, $0) })
             let next = entries.compactMap { byID[$0.layer.id] }
             let previousDetails = rowDetails
@@ -454,7 +454,7 @@ struct NativeLayerList: NSViewRepresentable {
         }
         private func place(_ ids: [UUID], at row: Int, intoFolder: Bool, copying: Bool) -> Bool {
             // Where the drop lands is worked out once: each layer placed shifts the rows beneath it.
-            let current = session.layerRows
+            let current = session.filteredLayerRows
             let parent: UUID?, above: UUID?, atBottom: Bool
             if intoFolder {
                 parent = rows[row].id; above = nil; atBottom = false
@@ -491,7 +491,7 @@ struct NativeLayerList: NSViewRepresentable {
             }
             let dragged = Set(dropped)
             let carried = dragged.reduce(into: Set<UUID>()) { $0.formUnion(session.descendantIDs(of: $1)) }
-            return session.layerRows.map(\.layer.id).filter { dragged.contains($0) && !carried.contains($0) }
+            return session.filteredLayerRows.map(\.layer.id).filter { dragged.contains($0) && !carried.contains($0) }
         }
     }
 }
@@ -666,8 +666,8 @@ final class LayerTableView: NSTableView {
     /// the duplicate cursor over the rest of it, and over a mask thumbnail the one for showing the mask alone.
     private func clippingCursor(at point: NSPoint) -> NSCursor? {
         let index = row(at: point)
-        guard let session, session.layerRows.indices.contains(index) else { return nil }
-        let layer = session.layerRows[index].layer
+        guard let session, session.filteredLayerRows.indices.contains(index) else { return nil }
+        let layer = session.filteredLayerRows[index].layer
         // Option-click on a mask shows it alone (Option-dragging it onto another layer still copies it).
         if let thumbnail = thumbnail(at: point), thumbnail.isMaskTarget, !thumbnail.isHidden {
             return Self.showMaskCursor
@@ -684,7 +684,7 @@ final class LayerTableView: NSTableView {
     private static let clippingStrip: CGFloat = 10
     private func isClippingZone(_ point: NSPoint, row: Int) -> Bool {
         guard row >= 0 else { return false }
-        if let entries = session?.layerRows, entries.indices.contains(row), entries[row].layer.isGroup == true { return false }
+        if let entries = session?.filteredLayerRows, entries.indices.contains(row), entries[row].layer.isGroup == true { return false }
         let rect = rect(ofRow: row)
         return point.y >= rect.maxY - min(Self.clippingStrip, rect.height / 3)
     }
@@ -743,7 +743,7 @@ final class LayerTableView: NSTableView {
         // Handle clipping before effect selection: effects occupy the lower portion of taller rows.
         if event.modifierFlags.contains(.option), !event.modifierFlags.contains(.command), isClippingZone(point, row: row),
            thumbnail(at: point)?.isMaskTarget != true,
-           let entries = session?.layerRows, entries.indices.contains(row) {
+           let entries = session?.filteredLayerRows, entries.indices.contains(row) {
             session?.effectSelection = nil
             session?.toggleClippingMask(entries[row].layer.id)
             refreshClippingCursor(event.modifierFlags)
@@ -1416,8 +1416,8 @@ private final class EyeSwipeButton: NSButton {
         while let next = window.nextEvent(matching: [.leftMouseDragged, .leftMouseUp]) {
             if next.type == .leftMouseUp { return }
             let row = table.row(at: table.convert(next.locationInWindow, from: nil))
-            guard session.layerRows.indices.contains(row) else { continue }
-            session.setVisibilityInSwipe(session.layerRows[row].layer.id, visible: visible)
+            guard session.filteredLayerRows.indices.contains(row) else { continue }
+            session.setVisibilityInSwipe(session.filteredLayerRows[row].layer.id, visible: visible)
             table.autoscroll(with: next)
         }
     }
