@@ -127,35 +127,30 @@ jobs:
         if: failure() && (steps.parallel.outcome == 'failure' || steps.serial.outcome == 'failure')
         run: |
           python3 - <<'PY'
-          import re
           # xcodebuild emits harmless "error: NSCocoaErrorDomain ... com.apple.linkd" lines;
-          # they would drown the real test failures out of a single annotation.
+          # strip them, then print the failing-test block and the log tail in ONE annotation
+          # (a step is capped at 10 annotations otherwise).
           noise = ("NSCocoaErrorDomain", "com.apple.linkd", "[Connection]",
                    "Unable to ", "Process Instance Registry", "linkd.autoShortcut")
-          keep = re.compile(r"✘|Expectation failed|failed after|Test case .* failed|"
-                            r"Failing tests|Issue recorded|TEST FAILED|failed \(|XCTAssert")
           def clean(text):
               return [l.strip() for l in text.splitlines()
                       if l.strip() and not any(n in l for n in noise)]
-          lines = []
+          out = []
           for path in ("parallel-tests.log", "serial-tests.log"):
               try:
-                  text = open(path, errors="replace").read()
+                  lines = clean(open(path, errors="replace").read())
               except OSError:
                   continue
-              for line in clean(text):
-                  if keep.search(line) and line not in lines:
-                      lines.append(line)
-          if not lines:
-              for path in ("parallel-tests.log", "serial-tests.log"):
-                  try:
-                      lines.extend(clean(open(path, errors="replace").read())[-20:])
-                  except OSError:
-                      pass
+              out.append("=== %s ===" % path)
+              for i, line in enumerate(lines):
+                  if "Failing tests" in line:
+                      out.append("--- failing test list ---")
+                      out.extend(lines[i:i + 26])
+              out.append("--- tail ---")
+              out.extend(lines[-45:])
           def esc(s):
-              return s.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")[:220]
-          print("::error title=Test failures (%d)::%s" %
-                (len(lines), "%0A".join(esc(l) for l in lines[:30])))
+              return s.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")[:180]
+          print("::error title=Test log::" + "%0A".join(esc(l) for l in out[:120]))
           PY
 
       - name: Upload test results
