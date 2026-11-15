@@ -38,6 +38,7 @@ jobs:
       - name: Build for testing (universal)
         id: build
         run: >
+          set -o pipefail;
           xcodebuild build-for-testing
           -project Compositor.xcodeproj
           -scheme Compositor
@@ -47,6 +48,16 @@ jobs:
           ARCHS="arm64 x86_64"
           ONLY_ACTIVE_ARCH=NO
           CODE_SIGN_IDENTITY=-
+          2>&1 | tee build.log
+
+      # Job logs need admin rights on forks; surface compiler errors as annotations instead.
+      - name: Surface compiler errors
+        if: failure() && steps.build.outcome == 'failure'
+        run: |
+          if [ -f build.log ]; then
+            grep -E "error:" build.log | tr -d '\r' | sed -E 's/^[[:space:]]+//' | sort -u | head -40 |
+              while IFS= read -r line; do echo "::error::$line"; done
+          fi
 
       - name: Verify universal binary (arm64 + x86_64)
         run: |
