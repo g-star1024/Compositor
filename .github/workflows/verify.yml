@@ -122,18 +122,34 @@ jobs:
           2>&1 | tee serial-tests.log
 
       # Job logs need admin rights on forks; surface failing tests as annotations instead.
+      # GitHub caps a step at 10 annotations, so pack the failure lines into ONE annotation.
       - name: Surface test failures
         if: failure() && (steps.parallel.outcome == 'failure' || steps.serial.outcome == 'failure')
         run: |
-          for log in parallel-tests.log serial-tests.log; do
-            [ -f "$log" ] || continue
-            {
-              grep -n -E -A 10 "Failing tests:|✘|Test case .* failed|Expectation failed|Issue recorded|crash|error:" "$log"
-              echo "--- tail of $log ---"
-              tail -n 80 "$log"
-            } | tr -d '\r' | sed -E 's/^[[:space:]]+//' | sort -u | head -140 |
-              while IFS= read -r line; do echo "::error::$line"; done
-          done
+          python3 - <<'PY'
+          import re
+          pattern = re.compile(r"✘|Expectation failed|failed after|Issue recorded|crash|error:|Failing tests")
+          lines = []
+          for path in ("parallel-tests.log", "serial-tests.log"):
+              try:
+                  text = open(path, errors="replace").read()
+              except OSError:
+                  continue
+              for line in text.splitlines():
+                  if pattern.search(line):
+                      line = line.strip()
+                      if line and line not in lines:
+                          lines.append(line)
+          if not lines:
+              for path in ("parallel-tests.log", "serial-tests.log"):
+                  try:
+                      lines.extend(open(path, errors="replace").read().splitlines()[-25:])
+                  except OSError:
+                      pass
+          def esc(s):
+              return s.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")[:400]
+          print("::error title=Test failures::" + "%0A".join(esc(l) for l in lines[:40]))
+          PY
 
       - name: Upload test results
         if: failure()
